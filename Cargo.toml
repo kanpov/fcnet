@@ -1,0 +1,23 @@
+[package]
+name = "nat-helper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.13", features = ["derive"] }
+
+# tokio async rt + process for invoking iptables
+tokio = { version = "1.39.2", features = [
+    "macros",
+    "rt-multi-thread",
+    "process",
+] }
+futures = "0.3.30"
+# netns
+netns-rs = "0.1.0"
+# links and addrs via rtnetlink
+rtnetlink = "0.14.1"
+# tap device creation
+tokio-tun = "0.11.5"
+# cidr notation ips
+cidr = "0.2.3"
