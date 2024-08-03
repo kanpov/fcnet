@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
-use cidr::IpInet;
+use cidr::{IpInet, Ipv4Inet};
 use clap::{Parser, Subcommand};
 use tokio::process::Command;
 
 mod netns;
+mod tap;
 
 #[derive(Parser)]
 #[command(
@@ -55,8 +56,16 @@ pub struct Args {
         default_value = "eth0"
     )]
     main_iface: String,
+    #[arg(
+        help = "Name of the tap device to create",
+        long = "tap",
+        default_value = "tap0"
+    )]
+    tap_name: String,
+    #[arg(help = "The CIDR IP of the tap device to create", long = "tap-ip", default_value_t = Ipv4Inet::from_str("10.0.0.3/24").unwrap())]
+    tap_ip: Ipv4Inet,
     #[command(subcommand)]
-    subcommand: Subcommands,
+    subcommands: Subcommands,
 }
 
 #[derive(Subcommand)]
@@ -75,13 +84,24 @@ async fn main() {
         rtnetlink::new_connection().expect("Could not connect to rtnetlink");
     tokio::spawn(connection);
 
-    if args.netns.is_some() {
-        netns::add_netns(&args, &netlink_handle).await;
-        netns::del_netns(&args).await;
-    }
+    match args.subcommands {
+        Subcommands::Add => {
+            if args.netns.is_some() {
+                netns::add_netns(&args, &netlink_handle).await;
+            }
+
+            tap::add_tap(&args).await;
+        }
+        Subcommands::Del => {
+            if args.netns.is_some() {
+                netns::del_netns(&args).await;
+            }
+        }
+    };
 }
 
 pub async fn run_iptables(args: &Args, iptables_cmd: String) {
+    dbg!(&iptables_cmd);
     let mut command = Command::new(args.iptables_path.as_str());
     for iptables_arg in iptables_cmd.split(' ') {
         command.arg(iptables_arg);

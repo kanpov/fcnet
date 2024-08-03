@@ -45,7 +45,7 @@ pub async fn add_netns(args: &Args, netlink_handle: &rtnetlink::Handle) {
         .await
         .expect("Failed to up veth");
 
-    // inside netns, up vpeer and loopback, set vpeer IP
+    // inside netns, up vpeer and loopback, set vpeer IP, route through veth
     netns
         .run_async(|| async {
             let (conn, inner_handle, _) =
@@ -69,6 +69,7 @@ pub async fn add_netns(args: &Args, netlink_handle: &rtnetlink::Handle) {
                 .execute()
                 .await
                 .expect("Could not set IP of vpeer inside netns");
+
             let loopback_idx = get_link_index("lo".to_owned(), &inner_handle).await;
             inner_handle
                 .link()
@@ -158,7 +159,7 @@ async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> u32
         .index
 }
 
-trait AsyncNetnsRun {
+pub trait AsyncNetnsRun {
     fn run_async<F, Fut>(&self, closure: F) -> impl Future<Output = ()>
     where
         F: FnOnce() -> Fut,
