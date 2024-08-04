@@ -1,8 +1,9 @@
 use std::str::FromStr;
 
-use cidr::{IpInet, Ipv4Inet};
+use cidr::IpInet;
 use clap::{Args, Parser, Subcommand};
 use futures::TryStreamExt;
+use netns::NetNsMetadata;
 use tokio::process::Command;
 
 mod netns;
@@ -28,23 +29,19 @@ pub struct Cli {
         default_value = "eth0"
     )]
     iface_name: String,
-    #[arg(
-        help = "Name of the tap device to create",
-        long = "tap",
-        default_value = "tap0"
-    )]
+    #[arg(help = "Name of the tap device to create", long = "tap", default_value = "tap0")]
     tap_name: String,
-    #[arg(help = "The CIDR IP of the tap device to create", long = "tap-ip", default_value_t = Ipv4Inet::from_str("10.0.0.1/24").unwrap())]
-    tap_ip: Ipv4Inet,
+    #[arg(help = "The CIDR IP of the tap device to create", long = "tap-ip", default_value_t = IpInet::from_str("172.16.0.1/24").unwrap())]
+    tap_ip: IpInet,
     #[command(flatten)]
-    add_or_del_group: AddOrDelGroup,
+    operation_group: OperationGroup,
     #[command(subcommand)]
     subcommands: Subcommands,
 }
 
 #[derive(Args)]
 #[group(required = true, multiple = false)]
-pub struct AddOrDelGroup {
+pub struct OperationGroup {
     #[arg(short = 'A', long = "add", help = "Add the given network")]
     add: bool,
     #[arg(short = 'D', long = "del", help = "Delete the given network")]
@@ -53,7 +50,7 @@ pub struct AddOrDelGroup {
     check: bool,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum Subcommands {
     #[command(about = "Use a simple configuration in the default netns")]
     Simple,
@@ -96,11 +93,10 @@ pub enum Subcommands {
 async fn main() {
     let cli = Cli::parse();
 
-    let (connection, netlink_handle, _) =
-        rtnetlink::new_connection().expect("Could not connect to rtnetlink");
+    let (connection, netlink_handle, _) = rtnetlink::new_connection().expect("Could not connect to rtnetlink");
     tokio::spawn(connection);
 
-    match cli.subcommands {
+    match cli.subcommands.clone() {
         Subcommands::Simple => {
             simple::run(&cli, &netlink_handle).await;
         }
@@ -111,7 +107,20 @@ async fn main() {
             veth2_name,
             veth1_ip,
             veth2_ip,
-        } => todo!(),
+        } => {
+            netns::run(
+                &cli,
+                &netlink_handle,
+                NetNsMetadata {
+                    netns_name,
+                    veth1_name,
+                    veth2_name,
+                    veth1_ip,
+                    veth2_ip,
+                },
+            )
+            .await
+        }
     };
 }
 
@@ -132,6 +141,7 @@ pub async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) ->
 }
 
 pub async fn run_iptables(cli: &Cli, iptables_cmd: String) {
+    dbg!(&iptables_cmd);
     let mut command = Command::new(cli.iptables_path.as_str());
     for iptables_arg in iptables_cmd.split(' ') {
         command.arg(iptables_arg);
