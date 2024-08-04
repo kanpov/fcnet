@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{net::IpAddr, str::FromStr};
 
 use cidr::IpInet;
 use clap::{Args, Parser, Subcommand};
@@ -56,36 +56,28 @@ pub enum Subcommands {
     Simple,
     #[command(about = "Use a configuration involving a new netns")]
     Netns {
-        #[arg(
-            help = "Name of the network namespace to be created and connected",
-            long = "netns",
-            default_value = "fcnet"
-        )]
+        #[arg(help = "Name of the network namespace", long = "netns", default_value = "fcnet")]
         netns_name: String,
-        #[arg(
-            help = "The first end of the veth pair, applicable for a netns config",
-            long = "veth1",
-            default_value = "veth0"
-        )]
+        #[arg(help = "The first end of the veth pair", long = "veth1", default_value = "veth1")]
         veth1_name: String,
-        #[arg(
-            help = "The second end of the veth pair, applicable for a netns config",
-            long = "veth2",
-            default_value = "vpeer0"
-        )]
+        #[arg(help = "The second end of the veth pair", long = "veth2", default_value = "veth2")]
         veth2_name: String,
         #[arg(
-            help = "The CIDR IP of the first end of the veth pair, applicable for a netns config",
+            help = "The CIDR IP of the first end of the veth pair",
             long = "veth1-ip",
-            default_value_t = IpInet::from_str("10.0.0.2/24").unwrap()
+            default_value_t = IpInet::from_str("10.0.0.1/24").unwrap()
         )]
         veth1_ip: IpInet,
         #[arg(
-            help = "The CIDR IP of the second end of the veth pair, applicable for a netns config",
+            help = "The CIDR IP of the second end of the veth pair",
             long = "veth2-ip",
-            default_value_t = IpInet::from_str("10.0.0.3/24").unwrap()
+            default_value_t = IpInet::from_str("10.0.0.2/24").unwrap()
         )]
         veth2_ip: IpInet,
+        #[arg(help = "The IP by which the VM will be accessible in the default netns", long = "outer-ip", default_value_t = IpAddr::from_str("192.168.0.3").unwrap())]
+        outer_ip: IpAddr,
+        #[arg(help = "The IP inside the VM guest representing it", long = "guest-ip", default_value_t = IpAddr::from_str("172.16.0.2").unwrap())]
+        guest_ip: IpAddr,
     },
 }
 
@@ -107,6 +99,8 @@ async fn main() {
             veth2_name,
             veth1_ip,
             veth2_ip,
+            outer_ip,
+            guest_ip,
         } => {
             netns::run(
                 &cli,
@@ -117,6 +111,8 @@ async fn main() {
                     veth2_name,
                     veth1_ip,
                     veth2_ip,
+                    outer_ip,
+                    guest_ip,
                 },
             )
             .await
