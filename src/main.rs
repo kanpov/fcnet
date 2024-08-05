@@ -76,8 +76,11 @@ pub enum Subcommands {
         veth2_ip: IpInet,
         #[arg(help = "The IP by which the VM will be accessible in the default netns", long = "outer-ip", default_value_t = IpAddr::from_str("192.168.0.3").unwrap())]
         outer_ip: IpAddr,
-        #[arg(help = "The IP inside the VM guest representing it", long = "guest-ip", default_value_t = IpAddr::from_str("172.16.0.2").unwrap())]
-        guest_ip: IpAddr,
+        #[arg(
+            help = "Optionally, a forwarding pair for accessing guest IP on default netns. Example: 10.0.0.1:10.0.0.2 will expose 10.0.0.1 on the default netns that goes to guest 10.0.0.2",
+            long = "guest-ip-forward"
+        )]
+        guest_ip_forward: Option<String>,
     },
 }
 
@@ -100,8 +103,19 @@ async fn main() {
             veth1_ip,
             veth2_ip,
             outer_ip,
-            guest_ip,
+            guest_ip_forward,
         } => {
+            let mut parsed = None;
+            if let Some(guest_ip_forward) = guest_ip_forward {
+                let (split1, split2) = guest_ip_forward
+                    .split_once(':')
+                    .expect("IP forward pair is incorrectly formatted: no ':' delimiter");
+                parsed = Some((
+                    IpAddr::from_str(split1).expect(format!("{} is not an IP", split1).as_str()),
+                    IpAddr::from_str(split2).expect(format!("{} is not an IP", split2).as_str()),
+                ));
+            }
+
             netns::run(
                 &cli,
                 &netlink_handle,
@@ -111,8 +125,7 @@ async fn main() {
                     veth2_name,
                     veth1_ip,
                     veth2_ip,
-                    outer_ip,
-                    guest_ip,
+                    guest_ip_forward: parsed,
                 },
             )
             .await
