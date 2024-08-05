@@ -18,17 +18,17 @@ pub struct NetNsMetadata {
     pub guest_ip_forward: Option<(IpAddr, IpAddr)>,
 }
 
-pub async fn run(cli: &Cli, netlink_handle: &rtnetlink::Handle, netns_metadata: NetNsMetadata) {
+pub async fn run(cli: Cli, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
     if cli.operation_group.add {
         add_with_netns(cli, netlink_handle, netns_metadata).await;
     } else if cli.operation_group.del {
-        del_with_netns(cli, netlink_handle, netns_metadata).await;
+        del_with_netns(cli, netns_metadata).await;
     } else {
         check_with_netns(cli, netlink_handle, netns_metadata).await;
     }
 }
 
-async fn add_with_netns(cli: &Cli, outer_handle: &rtnetlink::Handle, netns_metadata: NetNsMetadata) {
+async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
     let netns = NetNs::new(netns_metadata.netns_name).expect("Could not create netns");
 
     outer_handle
@@ -38,7 +38,7 @@ async fn add_with_netns(cli: &Cli, outer_handle: &rtnetlink::Handle, netns_metad
         .execute()
         .await
         .expect("Could not create veth pair");
-    let veth1_idx = get_link_index(netns_metadata.veth1_name.clone(), outer_handle).await;
+    let veth1_idx = get_link_index(netns_metadata.veth1_name.clone(), &outer_handle).await;
     outer_handle
         .address()
         .add(
@@ -58,7 +58,7 @@ async fn add_with_netns(cli: &Cli, outer_handle: &rtnetlink::Handle, netns_metad
         .expect("Could not up veth1");
     outer_handle
         .link()
-        .set(get_link_index(netns_metadata.veth2_name.clone(), outer_handle).await)
+        .set(get_link_index(netns_metadata.veth2_name.clone(), &outer_handle).await)
         .setns_by_fd(netns.file().as_raw_fd())
         .execute()
         .await
@@ -130,24 +130,24 @@ async fn add_with_netns(cli: &Cli, outer_handle: &rtnetlink::Handle, netns_metad
                 .expect("Could not up tap in netns");
 
             run_iptables(
-                cli,
+                &cli,
                 format!("-t nat -A POSTROUTING -o {} -j MASQUERADE", netns_metadata.veth2_name),
             )
             .await;
             run_iptables(
-                cli,
+                &cli,
                 "-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string(),
             )
             .await;
             run_iptables(
-                cli,
+                &cli,
                 format!("-A FORWARD -i {} -o {} -j ACCEPT", cli.tap_name, netns_metadata.veth2_name),
             )
             .await;
 
             if let Some((ref host_ip, ref guest_ip)) = netns_metadata.guest_ip_forward {
                 run_iptables(
-                    cli,
+                    &cli,
                     format!(
                         "-t nat -A PREROUTING -i {} -d {} -j DNAT --to {}",
                         netns_metadata.veth2_name, host_ip, guest_ip
@@ -159,7 +159,7 @@ async fn add_with_netns(cli: &Cli, outer_handle: &rtnetlink::Handle, netns_metad
         .await;
 
     run_iptables(
-        cli,
+        &cli,
         format!(
             "-t nat -A POSTROUTING -s {} -o {} -j MASQUERADE",
             netns_metadata.veth2_ip, cli.iface_name
@@ -167,12 +167,12 @@ async fn add_with_netns(cli: &Cli, outer_handle: &rtnetlink::Handle, netns_metad
     )
     .await;
     run_iptables(
-        cli,
+        &cli,
         format!("-A FORWARD -i {} -o {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
     )
     .await;
     run_iptables(
-        cli,
+        &cli,
         format!("-A FORWARD -o {} -i {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
     )
     .await;
@@ -209,14 +209,14 @@ async fn add_with_netns(cli: &Cli, outer_handle: &rtnetlink::Handle, netns_metad
     }
 }
 
-async fn del_with_netns(cli: &Cli, netlink_handle: &rtnetlink::Handle, netns_metadata: NetNsMetadata) {
+async fn del_with_netns(cli: Cli, netns_metadata: NetNsMetadata) {
     NetNs::get(netns_metadata.netns_name)
         .expect("Could not get netns")
         .remove()
         .expect("Could not remove netns");
 
     run_iptables(
-        cli,
+        &cli,
         format!(
             "-t nat -D POSTROUTING -s {} -o {} -j MASQUERADE",
             netns_metadata.veth2_ip, cli.iface_name
@@ -224,18 +224,18 @@ async fn del_with_netns(cli: &Cli, netlink_handle: &rtnetlink::Handle, netns_met
     )
     .await;
     run_iptables(
-        cli,
+        &cli,
         format!("-D FORWARD -i {} -o {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
     )
     .await;
     run_iptables(
-        cli,
+        &cli,
         format!("-D FORWARD -o {} -i {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
     )
     .await;
 }
 
-async fn check_with_netns(cli: &Cli, netlink_handle: &rtnetlink::Handle, netns_metadata: NetNsMetadata) {
+async fn check_with_netns(cli: Cli, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
     NetNs::get(netns_metadata.netns_name).expect("Could not get netns");
 
     if let Some((host_ip, _)) = netns_metadata.guest_ip_forward {
@@ -250,8 +250,8 @@ async fn check_with_netns(cli: &Cli, netlink_handle: &rtnetlink::Handle, netns_m
             for attribute in &current_route_message.attributes {
                 if let RouteAttribute::Destination(route_addr) = attribute {
                     let ip_addr = match route_addr {
-                        RouteAddress::Inet(i) => IpAddr::V4(i.clone()),
-                        RouteAddress::Inet6(i) => IpAddr::V6(i.clone()),
+                        RouteAddress::Inet(i) => IpAddr::V4(*i),
+                        RouteAddress::Inet6(i) => IpAddr::V6(*i),
                         _ => continue,
                     };
 
@@ -275,16 +275,14 @@ trait AsyncNetnsRun {
 }
 
 impl AsyncNetnsRun for NetNs {
-    fn run_async<F, Fut>(&self, closure: F) -> impl Future<Output = ()>
+    async fn run_async<F, Fut>(&self, closure: F)
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = ()>,
     {
-        async move {
-            let prev_netns = netns_rs::get_from_current_thread().expect("Could not get prev netns");
-            self.enter().expect("Could not enter new netns");
-            closure().await;
-            prev_netns.enter().expect("Could not enter prev netns");
-        }
+        let prev_netns = netns_rs::get_from_current_thread().expect("Could not get prev netns");
+        self.enter().expect("Could not enter new netns");
+        closure().await;
+        prev_netns.enter().expect("Could not enter prev netns");
     }
 }

@@ -93,7 +93,7 @@ async fn main() {
 
     match cli.subcommands.clone() {
         Subcommands::Simple => {
-            simple::run(&cli, &netlink_handle).await;
+            simple::run(cli, netlink_handle).await;
         }
         #[allow(unused)]
         Subcommands::Netns {
@@ -111,14 +111,14 @@ async fn main() {
                     .split_once(':')
                     .expect("IP forward pair is incorrectly formatted: no ':' delimiter");
                 parsed = Some((
-                    IpAddr::from_str(split1).expect(format!("{} is not an IP", split1).as_str()),
-                    IpAddr::from_str(split2).expect(format!("{} is not an IP", split2).as_str()),
+                    IpAddr::from_str(split1).unwrap_or_else(|_| panic!("{} is not an IP", split1)),
+                    IpAddr::from_str(split2).unwrap_or_else(|_| panic!("{} is not an IP", split2)),
                 ));
             }
 
             netns::run(
-                &cli,
-                &netlink_handle,
+                cli,
+                netlink_handle,
                 NetNsMetadata {
                     netns_name,
                     veth1_name,
