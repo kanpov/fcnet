@@ -11,9 +11,9 @@ mod simple;
 
 #[derive(Parser)]
 #[command(
-    name = "nat-helper",
+    name = "fcnet",
     version = "0.1",
-    about = "NAT helper for Firecracker workloads",
+    about = "Simple and effective networking tool for Firecracker microVMs",
     propagate_version = true
 )]
 pub struct Cli {

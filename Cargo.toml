@@ -1,5 +1,5 @@
 [package]
-name = "nat-helper"
+name = "fcnet"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,7 +15,7 @@ tokio = { version = "1.39.2", features = [
 futures = "0.3.30"
 # netns
 netns-rs = "0.1.0"
-# links and addrs via rtnetlink
+# iproute2 directly via rtnetlink
 rtnetlink = "0.14.1"
 netlink-packet-route = "0.19"
 # tap device creation
