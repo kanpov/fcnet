@@ -78,9 +78,9 @@ pub enum Subcommands {
         outer_ip: IpAddr,
         #[arg(
             help = "Optionally, a forwarding pair for accessing guest IP on default netns. Example: 10.0.0.1:10.0.0.2 will expose 10.0.0.1 on the default netns that goes to guest 10.0.0.2",
-            long = "guest-ip-forward"
+            long = "forward"
         )]
-        guest_ip_forward: Option<String>,
+        forward: Option<String>,
     },
 }
 
@@ -103,11 +103,11 @@ async fn main() {
             veth1_ip,
             veth2_ip,
             outer_ip,
-            guest_ip_forward,
+            forward,
         } => {
             let mut parsed = None;
-            if let Some(guest_ip_forward) = guest_ip_forward {
-                let (split1, split2) = guest_ip_forward
+            if let Some(forward) = forward {
+                let (split1, split2) = forward
                     .split_once(':')
                     .expect("IP forward pair is incorrectly formatted: no ':' delimiter");
                 parsed = Some((
@@ -125,7 +125,7 @@ async fn main() {
                     veth2_name,
                     veth1_ip,
                     veth2_ip,
-                    guest_ip_forward: parsed,
+                    forward: parsed,
                 },
             )
             .await

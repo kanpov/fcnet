@@ -15,7 +15,7 @@ pub struct NetNsMetadata {
     pub veth2_name: String,
     pub veth1_ip: IpInet,
     pub veth2_ip: IpInet,
-    pub guest_ip_forward: Option<(IpAddr, IpAddr)>,
+    pub forward: Option<(IpAddr, IpAddr)>,
 }
 
 pub async fn run(cli: Cli, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
@@ -145,7 +145,7 @@ async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadat
             )
             .await;
 
-            if let Some((ref host_ip, ref guest_ip)) = netns_metadata.guest_ip_forward {
+            if let Some((ref host_ip, ref guest_ip)) = netns_metadata.forward {
                 run_iptables(
                     &cli,
                     format!(
@@ -177,7 +177,7 @@ async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadat
     )
     .await;
 
-    if let Some((host_ip, _)) = netns_metadata.guest_ip_forward {
+    if let Some((host_ip, _)) = netns_metadata.forward {
         match host_ip {
             IpAddr::V4(v4) => {
                 outer_handle
@@ -236,9 +236,59 @@ async fn del_with_netns(cli: Cli, netns_metadata: NetNsMetadata) {
 }
 
 async fn check_with_netns(cli: Cli, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
-    NetNs::get(netns_metadata.netns_name).expect("Could not get netns");
+    let netns = NetNs::get(netns_metadata.netns_name).expect("Could not get netns");
 
-    if let Some((host_ip, _)) = netns_metadata.guest_ip_forward {
+    run_iptables(
+        &cli,
+        format!(
+            "-t nat -C POSTROUTING -s {} -o {} -j MASQUERADE",
+            netns_metadata.veth2_ip, cli.iface_name
+        ),
+    )
+    .await;
+    run_iptables(
+        &cli,
+        format!("-C FORWARD -i {} -o {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
+    )
+    .await;
+    run_iptables(
+        &cli,
+        format!("-C FORWARD -o {} -i {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
+    )
+    .await;
+
+    netns
+        .run_async(|| async {
+            run_iptables(
+                &cli,
+                format!("-t nat -C POSTROUTING -o {} -j MASQUERADE", netns_metadata.veth2_name),
+            )
+            .await;
+            run_iptables(
+                &cli,
+                "-C FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string(),
+            )
+            .await;
+            run_iptables(
+                &cli,
+                format!("-C FORWARD -i {} -o {} -j ACCEPT", cli.tap_name, netns_metadata.veth2_name),
+            )
+            .await;
+
+            if let Some((ref host_ip, ref guest_ip)) = netns_metadata.forward {
+                run_iptables(
+                    &cli,
+                    format!(
+                        "-t nat -C PREROUTING -i {} -d {} -j DNAT --to {}",
+                        netns_metadata.veth2_name, host_ip, guest_ip
+                    ),
+                )
+                .await;
+            }
+        })
+        .await;
+
+    if let Some((host_ip, _)) = netns_metadata.forward {
         let ip_version = match host_ip {
             IpAddr::V4(_) => IpVersion::V4,
             IpAddr::V6(_) => IpVersion::V6,
