@@ -74,8 +74,6 @@ pub enum Subcommands {
             default_value_t = IpInet::from_str("10.0.0.2/24").unwrap()
         )]
         veth2_ip: IpInet,
-        #[arg(help = "The IP by which the VM will be accessible in the default netns", long = "outer-ip", default_value_t = IpAddr::from_str("192.168.0.3").unwrap())]
-        outer_ip: IpAddr,
         #[arg(
             help = "Optionally, a forwarding pair for accessing guest IP on default netns. Example: 10.0.0.1:10.0.0.2 will expose 10.0.0.1 on the default netns that goes to guest 10.0.0.2",
             long = "forward"
@@ -102,7 +100,6 @@ async fn main() {
             veth2_name,
             veth1_ip,
             veth2_ip,
-            outer_ip,
             forward,
         } => {
             let mut parsed = None;
