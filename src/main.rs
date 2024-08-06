@@ -108,8 +108,8 @@ async fn main() {
             let mut parsed = None;
             if let Some(forward) = forward {
                 let (split1, split2) = forward
-                    .split_once(':')
-                    .expect("IP forward pair is incorrectly formatted: no ':' delimiter");
+                    .split_once("--")
+                    .expect("IP forward pair is incorrectly formatted: no '--' delimiter");
                 parsed = Some((
                     IpAddr::from_str(split1).unwrap_or_else(|_| panic!("{} is not an IP", split1)),
                     IpAddr::from_str(split2).unwrap_or_else(|_| panic!("{} is not an IP", split2)),
