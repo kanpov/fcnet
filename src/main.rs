@@ -144,7 +144,6 @@ pub async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) ->
 }
 
 pub async fn run_iptables(cli: &Cli, iptables_cmd: String) {
-    dbg!(&iptables_cmd);
     let mut command = Command::new(cli.iptables_path.as_str());
     for iptables_arg in iptables_cmd.split(' ') {
         command.arg(iptables_arg);
