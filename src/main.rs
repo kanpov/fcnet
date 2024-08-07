@@ -60,7 +60,7 @@ pub enum Subcommands {
         netns_name: String,
         #[arg(help = "The first end of the veth pair", long = "veth1", default_value = "veth1")]
         veth1_name: String,
-        #[arg(help = "The second end of the veth pair", long = "veth2", default_value = "veth2")]
+        #[arg(help = "The second end of the veth pair", long = "veth2", default_value = "veth0")]
         veth2_name: String,
         #[arg(
             help = "The CIDR IP of the first end of the veth pair",
@@ -75,10 +75,16 @@ pub enum Subcommands {
         )]
         veth2_ip: IpInet,
         #[arg(
-            help = "Optionally, a forwarding pair for accessing guest IP on default netns. Example: 10.0.0.1:10.0.0.2 will expose 10.0.0.1 on the default netns that goes to guest 10.0.0.2",
-            long = "forward"
+            help = "The IP of the guest (not the tap device)",
+            long = "guest-ip",
+            default_value_t = IpAddr::from_str("172.16.0.2").unwrap()
         )]
-        forward: Option<String>,
+        guest_ip: IpAddr,
+        #[arg(
+            help = "Optionally, an IP for forwarding connections to the guest from outside the netns (inside, use the actual guest IP)",
+            long = "forwarded-guest-ip"
+        )]
+        forwarded_guest_ip: Option<IpAddr>,
     },
 }
 
@@ -100,19 +106,9 @@ async fn main() {
             veth2_name,
             veth1_ip,
             veth2_ip,
-            forward,
+            guest_ip,
+            forwarded_guest_ip,
         } => {
-            let mut parsed = None;
-            if let Some(forward) = forward {
-                let (split1, split2) = forward
-                    .split_once("--")
-                    .expect("IP forward pair is incorrectly formatted: no '--' delimiter");
-                parsed = Some((
-                    IpAddr::from_str(split1).unwrap_or_else(|_| panic!("{} is not an IP", split1)),
-                    IpAddr::from_str(split2).unwrap_or_else(|_| panic!("{} is not an IP", split2)),
-                ));
-            }
-
             netns::run(
                 cli,
                 netlink_handle,
@@ -122,7 +118,8 @@ async fn main() {
                     veth2_name,
                     veth1_ip,
                     veth2_ip,
-                    forward: parsed,
+                    guest_ip,
+                    forwarded_guest_ip,
                 },
             )
             .await
