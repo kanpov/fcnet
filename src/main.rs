@@ -2,7 +2,7 @@ use std::{net::IpAddr, str::FromStr};
 
 use cidr::IpInet;
 use clap::{Args, Parser, Subcommand};
-use futures::TryStreamExt;
+use futures_util::TryStreamExt;
 use netns::NetNsMetadata;
 use tokio::process::Command;
 

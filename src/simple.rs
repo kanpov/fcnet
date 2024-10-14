@@ -15,7 +15,7 @@ pub async fn run(cli: Cli, netlink_handle: rtnetlink::Handle) {
 async fn add_without_netns(cli: Cli, netlink_handle: rtnetlink::Handle) {
     TunBuilder::new()
         .name(&cli.tap_name)
-        .tap(true)
+        .tap()
         .persist()
         .up()
         .try_build()

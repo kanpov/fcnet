@@ -1,7 +1,7 @@
 use std::{future::Future, net::IpAddr, os::fd::AsRawFd};
 
 use cidr::IpInet;
-use futures::TryStreamExt;
+use futures_util::TryStreamExt;
 use netlink_packet_route::route::{RouteAddress, RouteAttribute};
 use netns_rs::NetNs;
 use rtnetlink::IpVersion;
@@ -69,7 +69,7 @@ async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadat
         .run_async(|| async {
             TunBuilder::new()
                 .name(&cli.tap_name)
-                .tap(true)
+                .tap()
                 .persist()
                 .up()
                 .try_build()
