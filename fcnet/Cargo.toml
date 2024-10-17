@@ -9,6 +9,9 @@ categories = ["network-programming"]
 repository = "https://github.com/kanpov/fcnet"
 readme = "README.md"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 tokio = { version = "1.40.0", features = ["process"] }
 futures-util = { version = "0.3.31", default-features = false }
@@ -24,7 +27,7 @@ thiserror = "1.0.64"
 fcnet = { path = ".", features = ["namespaced"] }
 
 [features]
-default = []
+default = ["simple"]
 full = ["simple", "namespaced"]
 simple = []
 namespaced = ["dep:netns-rs", "tokio/sync", "tokio/rt"]
