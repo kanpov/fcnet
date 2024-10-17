@@ -10,7 +10,7 @@ repository = "https://github.com/kanpov/fcnet"
 readme = "README.md"
 
 [dependencies]
-tokio = { version = "1.40.0", features = ["process"] }
+tokio = { version = "1.40.0", features = ["process", "sync"] }
 futures-util = { version = "0.3.31", default-features = false }
 netns-rs = "0.1.0"
 rtnetlink = "0.14.1"

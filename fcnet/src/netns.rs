@@ -1,4 +1,4 @@
-use std::{future::Future, net::IpAddr, os::fd::AsRawFd};
+use std::{net::IpAddr, os::fd::AsRawFd, sync::Arc};
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
@@ -7,9 +7,9 @@ use netns_rs::NetNs;
 use rtnetlink::IpVersion;
 use tokio_tun::TunBuilder;
 
-use crate::{get_link_index, FirecrackerNetwork};
+use crate::{get_link_index, use_netns_in_thread, FirecrackerNetworkError, FirecrackerNetworkInner};
 
-pub struct NetNsMetadata {
+pub struct NamespacedData {
     pub netns_name: String,
     pub veth1_name: String,
     pub veth2_name: String,
@@ -19,44 +19,55 @@ pub struct NetNsMetadata {
     pub forwarded_guest_ip: Option<IpAddr>,
 }
 
-pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
-    let netns = NetNs::new(netns_metadata.netns_name).expect("Could not create netns");
-
+pub async fn add(
+    network: Arc<FirecrackerNetworkInner>,
+    outer_handle: rtnetlink::Handle,
+    namespaced_data: Arc<NamespacedData>,
+) -> Result<(), FirecrackerNetworkError> {
     outer_handle
         .link()
         .add()
-        .veth(netns_metadata.veth1_name.clone(), netns_metadata.veth2_name.clone())
+        .veth(namespaced_data.veth1_name.clone(), namespaced_data.veth2_name.clone())
         .execute()
         .await
-        .expect("Could not create veth pair");
-    let veth1_idx = get_link_index(netns_metadata.veth1_name.clone(), &outer_handle).await;
+        .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
+
+    let veth1_idx = get_link_index(namespaced_data.veth1_name.clone(), &outer_handle).await;
     outer_handle
         .address()
         .add(
             veth1_idx,
-            netns_metadata.veth1_ip.address(),
-            netns_metadata.veth1_ip.network_length(),
+            namespaced_data.veth1_ip.address(),
+            namespaced_data.veth1_ip.network_length(),
         )
         .execute()
         .await
-        .expect("Could not set veth1 IP");
+        .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
     outer_handle
         .link()
         .set(veth1_idx)
         .up()
         .execute()
         .await
-        .expect("Could not up veth1");
+        .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
     outer_handle
         .link()
-        .set(get_link_index(netns_metadata.veth2_name.clone(), &outer_handle).await)
-        .setns_by_fd(netns.file().as_raw_fd())
+        .set(get_link_index(namespaced_data.veth2_name.clone(), &outer_handle).await)
+        .setns_by_fd(
+            NetNs::get(&namespaced_data.netns_name)
+                .map_err(FirecrackerNetworkError::NetnsError)?
+                .file()
+                .as_raw_fd(),
+        )
         .execute()
         .await
-        .expect("Could not move veth2 into netns");
+        .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    netns
-        .run_async(|| async {
+    use_netns_in_thread(
+        namespaced_data.netns_name.clone(),
+        network.clone(),
+        namespaced_data.clone(),
+        |network, namespaced_data| async move {
             TunBuilder::new()
                 .name(&network.tap_name)
                 .tap()
@@ -67,13 +78,13 @@ pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlin
             let (conn, inner_handle, _) = rtnetlink::new_connection().expect("Could not connect to rtnetlink in netns");
             tokio::spawn(conn);
 
-            let veth2_idx = get_link_index(netns_metadata.veth2_name.clone(), &inner_handle).await;
+            let veth2_idx = get_link_index(namespaced_data.veth2_name.clone(), &inner_handle).await;
             inner_handle
                 .address()
                 .add(
                     veth2_idx,
-                    netns_metadata.veth2_ip.address(),
-                    netns_metadata.veth2_ip.network_length(),
+                    namespaced_data.veth2_ip.address(),
+                    namespaced_data.veth2_ip.network_length(),
                 )
                 .execute()
                 .await
@@ -86,7 +97,7 @@ pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlin
                 .await
                 .expect("Could not up veth2 in netns");
 
-            match netns_metadata.veth1_ip {
+            match namespaced_data.veth1_ip {
                 IpInet::V4(ref veth1_ip) => inner_handle
                     .route()
                     .add()
@@ -123,43 +134,46 @@ pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlin
             network
                 .run_iptables(format!(
                     "-t nat -A POSTROUTING -o {} -s {} -j SNAT --to {}",
-                    netns_metadata.veth2_name,
-                    netns_metadata.guest_ip,
-                    netns_metadata.veth2_ip.address()
+                    namespaced_data.veth2_name,
+                    namespaced_data.guest_ip,
+                    namespaced_data.veth2_ip.address()
                 ))
-                .await;
+                .await?;
 
-            if let Some(forwarded_guest_ip) = netns_metadata.forwarded_guest_ip {
+            if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
                 network
                     .run_iptables(format!(
                         "-t nat -A PREROUTING -i {} -d {} -j DNAT --to {}",
-                        netns_metadata.veth2_name, forwarded_guest_ip, netns_metadata.guest_ip
+                        namespaced_data.veth2_name, forwarded_guest_ip, namespaced_data.guest_ip
                     ))
-                    .await;
+                    .await?;
             }
-        })
-        .await;
+
+            Ok(())
+        },
+    )
+    .await?;
 
     network
         .run_iptables(format!(
             "-t nat -A POSTROUTING -s {} -o {} -j MASQUERADE",
-            netns_metadata.veth2_ip, network.iface_name
+            namespaced_data.veth2_ip, network.iface_name
         ))
-        .await;
+        .await?;
     network
         .run_iptables(format!(
             "-A FORWARD -i {} -o {} -j ACCEPT",
-            network.iface_name, netns_metadata.veth1_name
+            network.iface_name, namespaced_data.veth1_name
         ))
-        .await;
+        .await?;
     network
         .run_iptables(format!(
             "-A FORWARD -o {} -i {} -j ACCEPT",
-            network.iface_name, netns_metadata.veth1_name
+            network.iface_name, namespaced_data.veth1_name
         ))
-        .await;
+        .await?;
 
-    if let Some(forwarded_guest_ip) = netns_metadata.forwarded_guest_ip {
+    if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
         match forwarded_guest_ip {
             IpAddr::V4(v4) => {
                 outer_handle
@@ -167,7 +181,7 @@ pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlin
                     .add()
                     .v4()
                     .destination_prefix(v4, 32)
-                    .gateway(match netns_metadata.veth2_ip.address() {
+                    .gateway(match namespaced_data.veth2_ip.address() {
                         IpAddr::V4(v4) => v4,
                         IpAddr::V6(_) => panic!("Veth2 IP and host forward IP must be both v4, or both v6"),
                     })
@@ -180,7 +194,7 @@ pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlin
                 .add()
                 .v6()
                 .destination_prefix(v6, 128)
-                .gateway(match netns_metadata.veth2_ip.address() {
+                .gateway(match namespaced_data.veth2_ip.address() {
                     IpAddr::V4(_) => panic!("Veth2 IP and host forward IP must be both v4, or both v6"),
                     IpAddr::V6(v6) => v6,
                 })
@@ -189,10 +203,15 @@ pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlin
                 .expect("Could not create forwarding route"),
         };
     }
+
+    Ok(())
 }
 
-async fn del_with_netns(network: &FirecrackerNetwork, netns_metadata: NetNsMetadata) {
-    NetNs::get(netns_metadata.netns_name)
+pub async fn delete(
+    network: Arc<FirecrackerNetworkInner>,
+    namespaced_data: NamespacedData,
+) -> Result<(), FirecrackerNetworkError> {
+    NetNs::get(namespaced_data.netns_name)
         .expect("Could not get netns")
         .remove()
         .expect("Could not remove netns");
@@ -200,68 +219,76 @@ async fn del_with_netns(network: &FirecrackerNetwork, netns_metadata: NetNsMetad
     network
         .run_iptables(format!(
             "-t nat -D POSTROUTING -s {} -o {} -j MASQUERADE",
-            netns_metadata.veth2_ip, network.iface_name
+            namespaced_data.veth2_ip, network.iface_name
         ))
-        .await;
+        .await?;
     network
         .run_iptables(format!(
             "-D FORWARD -i {} -o {} -j ACCEPT",
-            network.iface_name, netns_metadata.veth1_name
+            network.iface_name, namespaced_data.veth1_name
         ))
-        .await;
+        .await?;
     network
         .run_iptables(format!(
             "-D FORWARD -o {} -i {} -j ACCEPT",
-            network.iface_name, netns_metadata.veth1_name
+            network.iface_name, namespaced_data.veth1_name
         ))
-        .await;
+        .await
 }
 
-async fn check_with_netns(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
-    let netns = NetNs::get(netns_metadata.netns_name).expect("Could not get netns");
-
+pub async fn check(
+    network: Arc<FirecrackerNetworkInner>,
+    netlink_handle: rtnetlink::Handle,
+    namespaced_data: Arc<NamespacedData>,
+) -> Result<(), FirecrackerNetworkError> {
     network
         .run_iptables(format!(
             "-t nat -C POSTROUTING -s {} -o {} -j MASQUERADE",
-            netns_metadata.veth2_ip, network.iface_name
+            namespaced_data.veth2_ip, network.iface_name
         ))
-        .await;
+        .await?;
     network
         .run_iptables(format!(
             "-C FORWARD -i {} -o {} -j ACCEPT",
-            network.iface_name, netns_metadata.veth1_name
+            network.iface_name, namespaced_data.veth1_name
         ))
-        .await;
+        .await?;
     network
         .run_iptables(format!(
             "-C FORWARD -o {} -i {} -j ACCEPT",
-            network.iface_name, netns_metadata.veth1_name
+            network.iface_name, namespaced_data.veth1_name
         ))
-        .await;
+        .await?;
 
-    netns
-        .run_async(|| async {
+    use_netns_in_thread(
+        namespaced_data.netns_name.clone(),
+        network,
+        namespaced_data.clone(),
+        |network, namespaced_data| async move {
             network
                 .run_iptables(format!(
                     "-t nat -C POSTROUTING -o {} -s {} -j SNAT --to {}",
-                    netns_metadata.veth2_name,
-                    netns_metadata.guest_ip,
-                    netns_metadata.veth2_ip.address()
+                    namespaced_data.veth2_name,
+                    namespaced_data.guest_ip,
+                    namespaced_data.veth2_ip.address()
                 ))
-                .await;
+                .await?;
 
-            if let Some(ref forwarded_guest_ip) = netns_metadata.forwarded_guest_ip {
+            if let Some(ref forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
                 network
                     .run_iptables(format!(
                         "-t nat -C PREROUTING -i {} -d {} -j DNAT --to {}",
-                        netns_metadata.veth2_name, forwarded_guest_ip, netns_metadata.guest_ip
+                        namespaced_data.veth2_name, forwarded_guest_ip, namespaced_data.guest_ip
                     ))
-                    .await;
+                    .await?;
             }
-        })
-        .await;
 
-    if let Some(forwarded_guest_ip) = netns_metadata.forwarded_guest_ip {
+            Ok(())
+        },
+    )
+    .await?;
+
+    if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
         let ip_version = match forwarded_guest_ip {
             IpAddr::V4(_) => IpVersion::V4,
             IpAddr::V6(_) => IpVersion::V6,
@@ -288,24 +315,6 @@ async fn check_with_netns(network: &FirecrackerNetwork, netlink_handle: rtnetlin
 
         route_message.expect("Could not find expected forwarding route");
     }
-}
 
-trait AsyncNetnsRun {
-    fn run_async<F, Fut>(&self, closure: F) -> impl Future<Output = ()>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = ()>;
-}
-
-impl AsyncNetnsRun for NetNs {
-    async fn run_async<F, Fut>(&self, closure: F)
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = ()>,
-    {
-        let prev_netns = netns_rs::get_from_current_thread().expect("Could not get prev netns");
-        self.enter().expect("Could not enter new netns");
-        closure().await;
-        prev_netns.enter().expect("Could not enter prev netns");
-    }
+    Ok(())
 }
