@@ -7,22 +7,60 @@ use netns_rs::NetNs;
 use rtnetlink::IpVersion;
 use tokio_tun::TunBuilder;
 
-use crate::{get_link_index, use_netns_in_thread, FirecrackerNetworkError, FirecrackerNetworkInner};
+use crate::{
+    get_link_index, use_netns_in_thread, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation,
+    FirecrackerNetworkType,
+};
 
 pub struct NamespacedData {
-    pub netns_name: String,
-    pub veth1_name: String,
-    pub veth2_name: String,
-    pub veth1_ip: IpInet,
-    pub veth2_ip: IpInet,
-    pub guest_ip: IpAddr,
-    pub forwarded_guest_ip: Option<IpAddr>,
+    netns_name: String,
+    veth1_name: String,
+    veth2_name: String,
+    veth1_ip: IpInet,
+    veth2_ip: IpInet,
+    guest_ip: IpAddr,
+    forwarded_guest_ip: Option<IpAddr>,
 }
 
-pub async fn add(
-    network: Arc<FirecrackerNetworkInner>,
-    outer_handle: rtnetlink::Handle,
+pub async fn run(
+    operation: FirecrackerNetworkOperation,
+    network: Arc<FirecrackerNetwork>,
+    netlink_handle: rtnetlink::Handle,
+) -> Result<(), FirecrackerNetworkError> {
+    fn make_namespaced_data(network: Arc<FirecrackerNetwork>) -> Arc<NamespacedData> {
+        Arc::new(match network.network_type.clone() {
+            FirecrackerNetworkType::Simple => unreachable!(),
+            FirecrackerNetworkType::Namespaced {
+                netns_name,
+                veth1_name,
+                veth2_name,
+                veth1_ip,
+                veth2_ip,
+                guest_ip,
+                forwarded_guest_ip,
+            } => NamespacedData {
+                netns_name,
+                veth1_name,
+                veth2_name,
+                veth1_ip,
+                veth2_ip,
+                guest_ip,
+                forwarded_guest_ip,
+            },
+        })
+    }
+
+    match operation {
+        FirecrackerNetworkOperation::Add => add(make_namespaced_data(network.clone()), network, netlink_handle).await,
+        FirecrackerNetworkOperation::Check => check(make_namespaced_data(network.clone()), network, netlink_handle).await,
+        FirecrackerNetworkOperation::Delete => delete(make_namespaced_data(network.clone()), network).await,
+    }
+}
+
+async fn add(
     namespaced_data: Arc<NamespacedData>,
+    network: Arc<FirecrackerNetwork>,
+    outer_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
     outer_handle
         .link()
@@ -205,11 +243,8 @@ pub async fn add(
     Ok(())
 }
 
-pub async fn delete(
-    network: Arc<FirecrackerNetworkInner>,
-    namespaced_data: NamespacedData,
-) -> Result<(), FirecrackerNetworkError> {
-    NetNs::get(namespaced_data.netns_name)
+async fn delete(namespaced_data: Arc<NamespacedData>, network: Arc<FirecrackerNetwork>) -> Result<(), FirecrackerNetworkError> {
+    NetNs::get(&namespaced_data.netns_name)
         .map_err(FirecrackerNetworkError::NetnsError)?
         .remove()
         .map_err(FirecrackerNetworkError::NetnsError)?;
@@ -234,10 +269,10 @@ pub async fn delete(
         .await
 }
 
-pub async fn check(
-    network: Arc<FirecrackerNetworkInner>,
-    netlink_handle: rtnetlink::Handle,
+async fn check(
     namespaced_data: Arc<NamespacedData>,
+    network: Arc<FirecrackerNetwork>,
+    netlink_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
     network
         .run_iptables(format!(

@@ -2,12 +2,21 @@ use std::sync::Arc;
 
 use tokio_tun::TunBuilder;
 
-use crate::{get_link_index, FirecrackerNetworkError, FirecrackerNetworkInner};
+use crate::{get_link_index, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation};
 
-pub async fn add(
-    network: Arc<FirecrackerNetworkInner>,
+pub async fn run(
+    network: Arc<FirecrackerNetwork>,
     netlink_handle: rtnetlink::Handle,
+    operation: FirecrackerNetworkOperation,
 ) -> Result<(), FirecrackerNetworkError> {
+    match operation {
+        FirecrackerNetworkOperation::Add => add(network, netlink_handle).await,
+        FirecrackerNetworkOperation::Check => check(network, netlink_handle).await,
+        FirecrackerNetworkOperation::Delete => delete(network, netlink_handle).await,
+    }
+}
+
+async fn add(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
     TunBuilder::new()
         .name(&network.tap_name)
         .tap()
@@ -37,10 +46,7 @@ pub async fn add(
         .await
 }
 
-pub async fn delete(
-    network: Arc<FirecrackerNetworkInner>,
-    netlink_handle: rtnetlink::Handle,
-) -> Result<(), FirecrackerNetworkError> {
+async fn delete(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
     let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await;
     netlink_handle
         .link()
@@ -63,10 +69,7 @@ pub async fn delete(
         .await
 }
 
-pub async fn check(
-    network: Arc<FirecrackerNetworkInner>,
-    netlink_handle: rtnetlink::Handle,
-) -> Result<(), FirecrackerNetworkError> {
+async fn check(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
     get_link_index(network.tap_name.clone(), &netlink_handle).await;
 
     network

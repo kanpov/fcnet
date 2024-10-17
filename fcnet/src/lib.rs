@@ -9,133 +9,16 @@ use tokio::process::Command;
 mod netns;
 mod simple;
 
-pub struct FirecrackerNetwork(Arc<FirecrackerNetworkInner>);
-
-struct FirecrackerNetworkInner {
-    iptables_path: PathBuf,
-    iface_name: String,
-    tap_name: String,
-    tap_ip: IpInet,
-    network_type: FirecrackerNetworkType,
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FirecrackerNetwork {
+    pub iptables_path: PathBuf,
+    pub iface_name: String,
+    pub tap_name: String,
+    pub tap_ip: IpInet,
+    pub network_type: FirecrackerNetworkType,
 }
 
-impl FirecrackerNetwork {
-    pub async fn add(&self) -> Result<(), FirecrackerNetworkError> {
-        let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
-        tokio::task::spawn(connection);
-
-        match self.0.clone().network_type.clone() {
-            FirecrackerNetworkType::Simple => simple::add(self.0.clone(), netlink_handle).await,
-            FirecrackerNetworkType::Namespaced {
-                netns_name,
-                veth1_name,
-                veth2_name,
-                veth1_ip,
-                veth2_ip,
-                guest_ip,
-                forwarded_guest_ip,
-            } => {
-                netns::add(
-                    self.0.clone(),
-                    netlink_handle,
-                    Arc::new(NamespacedData {
-                        netns_name,
-                        veth1_name,
-                        veth2_name,
-                        veth1_ip,
-                        veth2_ip,
-                        guest_ip,
-                        forwarded_guest_ip,
-                    }),
-                )
-                .await
-            }
-        }
-    }
-
-    pub async fn delete(&self) -> Result<(), FirecrackerNetworkError> {
-        let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
-        tokio::task::spawn(connection);
-
-        match self.0.clone().network_type.clone() {
-            FirecrackerNetworkType::Simple => simple::delete(self.0.clone(), netlink_handle).await,
-            FirecrackerNetworkType::Namespaced {
-                netns_name,
-                veth1_name,
-                veth2_name,
-                veth1_ip,
-                veth2_ip,
-                guest_ip,
-                forwarded_guest_ip,
-            } => {
-                netns::delete(
-                    self.0.clone(),
-                    NamespacedData {
-                        netns_name,
-                        veth1_name,
-                        veth2_name,
-                        veth1_ip,
-                        veth2_ip,
-                        guest_ip,
-                        forwarded_guest_ip,
-                    },
-                )
-                .await
-            }
-        }
-    }
-
-    pub async fn check(&self) -> Result<(), FirecrackerNetworkError> {
-        let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
-        tokio::task::spawn(connection);
-
-        match self.0.clone().network_type.clone() {
-            FirecrackerNetworkType::Simple => simple::check(self.0.clone(), netlink_handle).await,
-            FirecrackerNetworkType::Namespaced {
-                netns_name,
-                veth1_name,
-                veth2_name,
-                veth1_ip,
-                veth2_ip,
-                guest_ip,
-                forwarded_guest_ip,
-            } => {
-                netns::check(
-                    self.0.clone(),
-                    netlink_handle,
-                    Arc::new(NamespacedData {
-                        netns_name,
-                        veth1_name,
-                        veth2_name,
-                        veth1_ip,
-                        veth2_ip,
-                        guest_ip,
-                        forwarded_guest_ip,
-                    }),
-                )
-                .await
-            }
-        }
-    }
-}
-
-impl FirecrackerNetworkInner {
-    async fn run_iptables(&self, iptables_cmd: String) -> Result<(), FirecrackerNetworkError> {
-        let mut command = Command::new(&self.iptables_path);
-        for iptables_arg in iptables_cmd.split(' ') {
-            command.arg(iptables_arg);
-        }
-
-        let status = command.status().await.map_err(FirecrackerNetworkError::IoError)?;
-        if !status.success() {
-            return Err(FirecrackerNetworkError::FailedInvocation(status));
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FirecrackerNetworkType {
     Simple,
     Namespaced {
@@ -149,6 +32,7 @@ pub enum FirecrackerNetworkType {
     },
 }
 
+#[derive(Debug)]
 pub enum FirecrackerNetworkError {
     NetlinkOperationError(rtnetlink::Error),
     TapDeviceError(tokio_tun::Error),
@@ -157,6 +41,47 @@ pub enum FirecrackerNetworkError {
     ChannelRecvError(tokio::sync::oneshot::error::RecvError),
     FailedInvocation(ExitStatus),
     RouteNotFound,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FirecrackerNetworkOperation {
+    Add,
+    Check,
+    Delete,
+}
+
+impl FirecrackerNetwork {
+    pub async fn run(self: Arc<Self>, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
+        let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
+        tokio::task::spawn(connection);
+
+        match &self.network_type {
+            FirecrackerNetworkType::Simple => simple::run(self, netlink_handle, operation).await,
+            FirecrackerNetworkType::Namespaced {
+                netns_name: _,
+                veth1_name: _,
+                veth2_name: _,
+                veth1_ip: _,
+                veth2_ip: _,
+                guest_ip: _,
+                forwarded_guest_ip: _,
+            } => netns::run(operation, self, netlink_handle).await,
+        }
+    }
+
+    async fn run_iptables(&self, iptables_cmd: String) -> Result<(), FirecrackerNetworkError> {
+        let mut command = Command::new(&self.iptables_path);
+        for iptables_arg in iptables_cmd.split(' ') {
+            command.arg(iptables_arg);
+        }
+
+        let status = command.status().await.map_err(FirecrackerNetworkError::IoError)?;
+        if !status.success() {
+            return Err(FirecrackerNetworkError::FailedInvocation(status));
+        }
+
+        Ok(())
+    }
 }
 
 async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> u32 {
@@ -174,11 +99,11 @@ async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> u32
 }
 
 async fn use_netns_in_thread<
-    F: 'static + Send + FnOnce(Arc<FirecrackerNetworkInner>, Arc<NamespacedData>) -> Fut,
+    F: 'static + Send + FnOnce(Arc<FirecrackerNetwork>, Arc<NamespacedData>) -> Fut,
     Fut: Send + Future<Output = Result<(), FirecrackerNetworkError>>,
 >(
     netns_name: String,
-    network: Arc<FirecrackerNetworkInner>,
+    network: Arc<FirecrackerNetwork>,
     namespaced_data: Arc<NamespacedData>,
     function: F,
 ) -> Result<(), FirecrackerNetworkError> {
