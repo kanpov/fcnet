@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["fcnet"]
+members = ["fcnet", "fcnet-cli"]
 
 [profile.release]
 lto = "fat"

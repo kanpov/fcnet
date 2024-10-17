@@ -1,0 +1,10 @@
+[package]
+name = "fcnet-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cidr = "0.3.0"
+clap = { version = "4.5.20", features = ["derive"] }
+fcnet = { path = "../fcnet" }
+tokio = { version = "1.40.0", features = ["rt", "macros"] }

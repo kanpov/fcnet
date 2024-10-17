@@ -107,12 +107,12 @@ async fn use_netns_in_thread<
     namespaced_data: Arc<NamespacedData>,
     function: F,
 ) -> Result<(), FirecrackerNetworkError> {
-    let netns = NetNs::new(netns_name).map_err(FirecrackerNetworkError::NetnsError)?;
+    let netns = NetNs::get(netns_name).map_err(FirecrackerNetworkError::NetnsError)?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
 
     std::thread::spawn(move || {
         let result = {
-            match tokio::runtime::Builder::new_current_thread().build() {
+            match tokio::runtime::Builder::new_current_thread().enable_all().build() {
                 Ok(runtime) => runtime.block_on(async move {
                     netns.enter().map_err(FirecrackerNetworkError::NetnsError)?;
                     function(network, namespaced_data).await

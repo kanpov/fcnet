@@ -1,6 +1,6 @@
 [package]
 name = "fcnet"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "A library for Firecracker microVM networking"
 license = "MIT"
@@ -10,7 +10,7 @@ repository = "https://github.com/kanpov/fcnet"
 readme = "README.md"
 
 [dependencies]
-tokio = { version = "1.40.0", features = ["process", "sync"] }
+tokio = { version = "1.40.0", features = ["process", "sync", "rt"] }
 futures-util = { version = "0.3.31", default-features = false }
 netns-rs = "0.1.0"
 rtnetlink = "0.14.1"

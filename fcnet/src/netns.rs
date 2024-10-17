@@ -92,7 +92,7 @@ async fn add(
         .link()
         .set(get_link_index(namespaced_data.veth2_name.clone(), &outer_handle).await)
         .setns_by_fd(
-            NetNs::get(&namespaced_data.netns_name)
+            NetNs::new(&namespaced_data.netns_name)
                 .map_err(FirecrackerNetworkError::NetnsError)?
                 .file()
                 .as_raw_fd(),
