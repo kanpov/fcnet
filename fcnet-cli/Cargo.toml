@@ -2,6 +2,12 @@
 name = "fcnet-cli"
 version = "0.1.0"
 edition = "2021"
+description = "A CLI wrapper around the fcnet library for Firecracker microVM networking"
+license = "MIT"
+keywords = ["firecracker", "microvm", "networking"]
+categories = ["network-programming"]
+repository = "https://github.com/kanpov/fcnet"
+readme = "README.md"
 
 [dependencies]
 cidr = "0.3.0"
