@@ -33,10 +33,16 @@ pub struct FirecrackerNetwork {
     pub network_type: FirecrackerNetworkType,
 }
 
+/// The type of Firecracker network to work with.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FirecrackerNetworkType {
+    /// A "simple" network configuration, with a tap device bound to the host interface via 1 set of forwarding rules.
+    /// The most optimal and performant choice for the majority of use-cases.
     #[cfg(feature = "simple")]
     Simple,
+    /// A namespaced network configuration, with the tap device residing in a separate network namespace and being
+    /// bound to the host interface via 2 sets of forwarding rules.
+    /// The better choice exclusively for multiple running microVM sharing the same snapshot data (i.e. so-called "clones").
     #[cfg(feature = "namespaced")]
     Namespaced {
         netns_name: String,
@@ -49,6 +55,7 @@ pub enum FirecrackerNetworkType {
     },
 }
 
+/// An error that can be emitted by a Firecracker network operation.
 #[derive(Debug, thiserror::Error)]
 pub enum FirecrackerNetworkError {
     #[error("An rtnetlink operation failed: `{0}`")]
@@ -71,6 +78,7 @@ pub enum FirecrackerNetworkError {
     LinkNotFound,
 }
 
+/// An operation that can be made with a FirecrackerNetwork.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FirecrackerNetworkOperation {
     /// Add this network to the host.
@@ -82,6 +90,8 @@ pub enum FirecrackerNetworkOperation {
 }
 
 impl FirecrackerNetwork {
+    /// Run an operation on this network, operating on an Arc and not a shared reference due to the internal threading
+    /// details of the implementation.
     pub async fn run(self: Arc<Self>, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
         let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
         tokio::task::spawn(connection);
@@ -100,6 +110,18 @@ impl FirecrackerNetwork {
                 forwarded_guest_ip: _,
             } => netns::run(operation, self, netlink_handle).await,
         }
+    }
+
+    /// Format a kernel boot argument that can be added so that all routing setup in the guest is performed
+    /// by the kernel automatically with iproute2 not needed in the guest.
+    pub fn guest_ip_boot_arg(&self, guest_ip: &IpInet, guest_iface_name: impl AsRef<str>) -> String {
+        format!(
+            "ip={}::{}:{}::{}:off",
+            guest_ip.address().to_string(),
+            self.tap_ip.address().to_string(),
+            guest_ip.mask().to_string(),
+            guest_iface_name.as_ref()
+        )
     }
 
     async fn run_iptables(&self, iptables_cmd: String) -> Result<(), FirecrackerNetworkError> {
