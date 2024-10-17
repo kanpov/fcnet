@@ -12,5 +12,5 @@ readme = "README.md"
 [dependencies]
 cidr = "0.3.0"
 clap = { version = "4.5.20", features = ["derive"] }
-fcnet = { path = "../fcnet", features = ["full"] }
+fcnet = { path = "../fcnet", version = "0.4.0", features = ["full"] }
 tokio = { version = "1.40.0", features = ["rt", "macros"] }
