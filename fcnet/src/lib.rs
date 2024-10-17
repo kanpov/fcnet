@@ -156,6 +156,7 @@ pub enum FirecrackerNetworkError {
     IoError(std::io::Error),
     ChannelRecvError(tokio::sync::oneshot::error::RecvError),
     FailedInvocation(ExitStatus),
+    RouteNotFound,
 }
 
 async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> u32 {

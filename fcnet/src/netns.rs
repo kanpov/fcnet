@@ -74,8 +74,8 @@ pub async fn add(
                 .persist()
                 .up()
                 .try_build()
-                .expect("Could not create tap device in netns");
-            let (conn, inner_handle, _) = rtnetlink::new_connection().expect("Could not connect to rtnetlink in netns");
+                .map_err(FirecrackerNetworkError::TapDeviceError)?;
+            let (conn, inner_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
             tokio::spawn(conn);
 
             let veth2_idx = get_link_index(namespaced_data.veth2_name.clone(), &inner_handle).await;
@@ -88,14 +88,14 @@ pub async fn add(
                 )
                 .execute()
                 .await
-                .expect("Could not set veth2 IP in netns");
+                .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
             inner_handle
                 .link()
                 .set(veth2_idx)
                 .up()
                 .execute()
                 .await
-                .expect("Could not up veth2 in netns");
+                .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
             match namespaced_data.veth1_ip {
                 IpInet::V4(ref veth1_ip) => inner_handle
@@ -105,7 +105,7 @@ pub async fn add(
                     .gateway(veth1_ip.address())
                     .execute()
                     .await
-                    .expect("Could not add default route in netns"),
+                    .map_err(FirecrackerNetworkError::NetlinkOperationError)?,
                 IpInet::V6(ref veth1_ip) => inner_handle
                     .route()
                     .add()
@@ -113,7 +113,7 @@ pub async fn add(
                     .gateway(veth1_ip.address())
                     .execute()
                     .await
-                    .expect("Could not add default route in netns"),
+                    .map_err(FirecrackerNetworkError::NetlinkOperationError)?,
             }
 
             let tap_idx = get_link_index(network.tap_name.clone(), &inner_handle).await;
@@ -122,14 +122,14 @@ pub async fn add(
                 .add(tap_idx, network.tap_ip.address(), network.tap_ip.network_length())
                 .execute()
                 .await
-                .expect("Could not set tap IP in netns");
+                .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
             inner_handle
                 .link()
                 .set(tap_idx)
                 .up()
                 .execute()
                 .await
-                .expect("Could not up tap in netns");
+                .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
             network
                 .run_iptables(format!(
@@ -175,20 +175,18 @@ pub async fn add(
 
     if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
         match forwarded_guest_ip {
-            IpAddr::V4(v4) => {
-                outer_handle
-                    .route()
-                    .add()
-                    .v4()
-                    .destination_prefix(v4, 32)
-                    .gateway(match namespaced_data.veth2_ip.address() {
-                        IpAddr::V4(v4) => v4,
-                        IpAddr::V6(_) => panic!("Veth2 IP and host forward IP must be both v4, or both v6"),
-                    })
-                    .execute()
-                    .await
-                    .expect("Could not create forwarding route");
-            }
+            IpAddr::V4(v4) => outer_handle
+                .route()
+                .add()
+                .v4()
+                .destination_prefix(v4, 32)
+                .gateway(match namespaced_data.veth2_ip.address() {
+                    IpAddr::V4(v4) => v4,
+                    IpAddr::V6(_) => panic!("Veth2 IP and host forward IP must be both v4, or both v6"),
+                })
+                .execute()
+                .await
+                .map_err(FirecrackerNetworkError::NetlinkOperationError)?,
             IpAddr::V6(v6) => outer_handle
                 .route()
                 .add()
@@ -200,7 +198,7 @@ pub async fn add(
                 })
                 .execute()
                 .await
-                .expect("Could not create forwarding route"),
+                .map_err(FirecrackerNetworkError::NetlinkOperationError)?,
         };
     }
 
@@ -212,9 +210,9 @@ pub async fn delete(
     namespaced_data: NamespacedData,
 ) -> Result<(), FirecrackerNetworkError> {
     NetNs::get(namespaced_data.netns_name)
-        .expect("Could not get netns")
+        .map_err(FirecrackerNetworkError::NetnsError)?
         .remove()
-        .expect("Could not remove netns");
+        .map_err(FirecrackerNetworkError::NetnsError)?;
 
     network
         .run_iptables(format!(
@@ -313,7 +311,9 @@ pub async fn check(
             }
         }
 
-        route_message.expect("Could not find expected forwarding route");
+        if route_message.is_none() {
+            return Err(FirecrackerNetworkError::RouteNotFound);
+        }
     }
 
     Ok(())
