@@ -24,7 +24,7 @@ async fn add(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle
         .up()
         .try_build()
         .map_err(FirecrackerNetworkError::TapDeviceError)?;
-    let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await;
+    let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await?;
     netlink_handle
         .address()
         .add(tap_idx, network.tap_ip.address(), network.tap_ip.network_length())
@@ -47,7 +47,7 @@ async fn add(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle
 }
 
 async fn delete(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
-    let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await;
+    let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await?;
     netlink_handle
         .link()
         .del(tap_idx)
@@ -70,7 +70,7 @@ async fn delete(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Han
 }
 
 async fn check(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
-    get_link_index(network.tap_name.clone(), &netlink_handle).await;
+    get_link_index(network.tap_name.clone(), &netlink_handle).await?;
 
     network
         .run_iptables(format!("-t nat -C POSTROUTING -o {} -j MASQUERADE", network.iface_name))

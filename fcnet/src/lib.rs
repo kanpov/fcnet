@@ -1,26 +1,43 @@
-use std::{future::Future, net::IpAddr, path::PathBuf, process::ExitStatus, sync::Arc};
+#[cfg(all(not(feature = "simple"), not(feature = "namespaced")))]
+compile_error!("Either \"simple\" or \"namespaced\" networking feature flags must be enabled");
+
+#[cfg(feature = "namespaced")]
+use std::{future::Future, net::IpAddr};
+use std::{path::PathBuf, process::ExitStatus, sync::Arc};
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
+#[cfg(feature = "namespaced")]
 use netns::NamespacedData;
+#[cfg(feature = "namespaced")]
 use netns_rs::NetNs;
 use tokio::process::Command;
 
+#[cfg(feature = "namespaced")]
 mod netns;
+#[cfg(feature = "simple")]
 mod simple;
 
+/// A configuration for a Firecracker microVM network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FirecrackerNetwork {
+    /// The path to the "iptables" (or "iptables-nft") binary on the system.
     pub iptables_path: PathBuf,
+    /// The name of the host network interface that handles real connectivity (i.e. via Ethernet or Wi-Fi).
     pub iface_name: String,
+    /// The name of the tap device to direct Firecracker to use.
     pub tap_name: String,
+    /// The IP of the tap device to direct Firecracker to use.
     pub tap_ip: IpInet,
+    /// The type of network to create, the available options depend on the feature flags enabled.
     pub network_type: FirecrackerNetworkType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FirecrackerNetworkType {
+    #[cfg(feature = "simple")]
     Simple,
+    #[cfg(feature = "namespaced")]
     Namespaced {
         netns_name: String,
         veth1_name: String,
@@ -32,21 +49,35 @@ pub enum FirecrackerNetworkType {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum FirecrackerNetworkError {
+    #[error("An rtnetlink operation failed: `{0}`")]
     NetlinkOperationError(rtnetlink::Error),
+    #[error("Creating or deleting a tap device failed: `{0}`")]
     TapDeviceError(tokio_tun::Error),
+    #[cfg(feature = "namespaced")]
+    #[error("Interacting with a network namespace failed: `{0}`")]
     NetnsError(netns_rs::Error),
+    #[error("A generic I/O error occurred: `{0}`")]
     IoError(std::io::Error),
+    #[cfg(feature = "namespaced")]
+    #[error("Receiving from a supporting oneshot channel failed: `{0}`")]
     ChannelRecvError(tokio::sync::oneshot::error::RecvError),
+    #[error("Invoking a process failed due to its non-zero exit status: `{0}`")]
     FailedInvocation(ExitStatus),
+    #[error("An expected IP route was not found on the host")]
     RouteNotFound,
+    #[error("An expected IP link was not found on the host")]
+    LinkNotFound,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FirecrackerNetworkOperation {
+    /// Add this network to the host.
     Add,
+    /// Check that this network already exists on the host.
     Check,
+    /// Delete this network from the host.
     Delete,
 }
 
@@ -56,7 +87,9 @@ impl FirecrackerNetwork {
         tokio::task::spawn(connection);
 
         match &self.network_type {
+            #[cfg(feature = "simple")]
             FirecrackerNetworkType::Simple => simple::run(self, netlink_handle, operation).await,
+            #[cfg(feature = "namespaced")]
             FirecrackerNetworkType::Namespaced {
                 netns_name: _,
                 veth1_name: _,
@@ -84,20 +117,21 @@ impl FirecrackerNetwork {
     }
 }
 
-async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> u32 {
-    netlink_handle
+async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Result<u32, FirecrackerNetworkError> {
+    Ok(netlink_handle
         .link()
         .get()
         .match_name(link)
         .execute()
         .try_next()
         .await
-        .expect("Could not query for a link's index")
-        .unwrap()
+        .map_err(FirecrackerNetworkError::NetlinkOperationError)?
+        .ok_or(FirecrackerNetworkError::LinkNotFound)?
         .header
-        .index
+        .index)
 }
 
+#[cfg(feature = "namespaced")]
 async fn use_netns_in_thread<
     F: 'static + Send + FnOnce(Arc<FirecrackerNetwork>, Arc<NamespacedData>) -> Fut,
     Fut: Send + Future<Output = Result<(), FirecrackerNetworkError>>,

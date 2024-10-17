@@ -29,6 +29,7 @@ pub async fn run(
 ) -> Result<(), FirecrackerNetworkError> {
     fn make_namespaced_data(network: Arc<FirecrackerNetwork>) -> Arc<NamespacedData> {
         Arc::new(match network.network_type.clone() {
+            #[cfg(feature = "simple")]
             FirecrackerNetworkType::Simple => unreachable!(),
             FirecrackerNetworkType::Namespaced {
                 netns_name,
@@ -70,7 +71,7 @@ async fn add(
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    let veth1_idx = get_link_index(namespaced_data.veth1_name.clone(), &outer_handle).await;
+    let veth1_idx = get_link_index(namespaced_data.veth1_name.clone(), &outer_handle).await?;
     outer_handle
         .address()
         .add(
@@ -90,7 +91,7 @@ async fn add(
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
     outer_handle
         .link()
-        .set(get_link_index(namespaced_data.veth2_name.clone(), &outer_handle).await)
+        .set(get_link_index(namespaced_data.veth2_name.clone(), &outer_handle).await?)
         .setns_by_fd(
             NetNs::new(&namespaced_data.netns_name)
                 .map_err(FirecrackerNetworkError::NetnsError)?
@@ -116,7 +117,7 @@ async fn add(
             let (conn, inner_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
             tokio::spawn(conn);
 
-            let veth2_idx = get_link_index(namespaced_data.veth2_name.clone(), &inner_handle).await;
+            let veth2_idx = get_link_index(namespaced_data.veth2_name.clone(), &inner_handle).await?;
             inner_handle
                 .address()
                 .add(
@@ -154,7 +155,7 @@ async fn add(
                     .map_err(FirecrackerNetworkError::NetlinkOperationError)?,
             }
 
-            let tap_idx = get_link_index(network.tap_name.clone(), &inner_handle).await;
+            let tap_idx = get_link_index(network.tap_name.clone(), &inner_handle).await?;
             inner_handle
                 .address()
                 .add(tap_idx, network.tap_ip.address(), network.tap_ip.network_length())
