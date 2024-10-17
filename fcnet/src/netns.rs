@@ -7,7 +7,7 @@ use netns_rs::NetNs;
 use rtnetlink::IpVersion;
 use tokio_tun::TunBuilder;
 
-use crate::{get_link_index, run_iptables, Cli};
+use crate::{get_link_index, FirecrackerNetwork};
 
 pub struct NetNsMetadata {
     pub netns_name: String,
@@ -19,17 +19,7 @@ pub struct NetNsMetadata {
     pub forwarded_guest_ip: Option<IpAddr>,
 }
 
-pub async fn run(cli: Cli, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
-    if cli.operation_group.add {
-        add_with_netns(cli, netlink_handle, netns_metadata).await;
-    } else if cli.operation_group.del {
-        del_with_netns(cli, netns_metadata).await;
-    } else {
-        check_with_netns(cli, netlink_handle, netns_metadata).await;
-    }
-}
-
-async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
+pub async fn add_with_netns(network: &FirecrackerNetwork, outer_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
     let netns = NetNs::new(netns_metadata.netns_name).expect("Could not create netns");
 
     outer_handle
@@ -68,7 +58,7 @@ async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadat
     netns
         .run_async(|| async {
             TunBuilder::new()
-                .name(&cli.tap_name)
+                .name(&network.tap_name)
                 .tap()
                 .persist()
                 .up()
@@ -115,10 +105,10 @@ async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadat
                     .expect("Could not add default route in netns"),
             }
 
-            let tap_idx = get_link_index(cli.tap_name.clone(), &inner_handle).await;
+            let tap_idx = get_link_index(network.tap_name.clone(), &inner_handle).await;
             inner_handle
                 .address()
-                .add(tap_idx, cli.tap_ip.address(), cli.tap_ip.network_length())
+                .add(tap_idx, network.tap_ip.address(), network.tap_ip.network_length())
                 .execute()
                 .await
                 .expect("Could not set tap IP in netns");
@@ -130,48 +120,44 @@ async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadat
                 .await
                 .expect("Could not up tap in netns");
 
-            run_iptables(
-                &cli,
-                format!(
+            network
+                .run_iptables(format!(
                     "-t nat -A POSTROUTING -o {} -s {} -j SNAT --to {}",
                     netns_metadata.veth2_name,
                     netns_metadata.guest_ip,
                     netns_metadata.veth2_ip.address()
-                ),
-            )
-            .await;
+                ))
+                .await;
 
             if let Some(forwarded_guest_ip) = netns_metadata.forwarded_guest_ip {
-                run_iptables(
-                    &cli,
-                    format!(
+                network
+                    .run_iptables(format!(
                         "-t nat -A PREROUTING -i {} -d {} -j DNAT --to {}",
                         netns_metadata.veth2_name, forwarded_guest_ip, netns_metadata.guest_ip
-                    ),
-                )
-                .await;
+                    ))
+                    .await;
             }
         })
         .await;
 
-    run_iptables(
-        &cli,
-        format!(
+    network
+        .run_iptables(format!(
             "-t nat -A POSTROUTING -s {} -o {} -j MASQUERADE",
-            netns_metadata.veth2_ip, cli.iface_name
-        ),
-    )
-    .await;
-    run_iptables(
-        &cli,
-        format!("-A FORWARD -i {} -o {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
-    )
-    .await;
-    run_iptables(
-        &cli,
-        format!("-A FORWARD -o {} -i {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
-    )
-    .await;
+            netns_metadata.veth2_ip, network.iface_name
+        ))
+        .await;
+    network
+        .run_iptables(format!(
+            "-A FORWARD -i {} -o {} -j ACCEPT",
+            network.iface_name, netns_metadata.veth1_name
+        ))
+        .await;
+    network
+        .run_iptables(format!(
+            "-A FORWARD -o {} -i {} -j ACCEPT",
+            network.iface_name, netns_metadata.veth1_name
+        ))
+        .await;
 
     if let Some(forwarded_guest_ip) = netns_metadata.forwarded_guest_ip {
         match forwarded_guest_ip {
@@ -205,76 +191,72 @@ async fn add_with_netns(cli: Cli, outer_handle: rtnetlink::Handle, netns_metadat
     }
 }
 
-async fn del_with_netns(cli: Cli, netns_metadata: NetNsMetadata) {
+async fn del_with_netns(network: &FirecrackerNetwork, netns_metadata: NetNsMetadata) {
     NetNs::get(netns_metadata.netns_name)
         .expect("Could not get netns")
         .remove()
         .expect("Could not remove netns");
 
-    run_iptables(
-        &cli,
-        format!(
+    network
+        .run_iptables(format!(
             "-t nat -D POSTROUTING -s {} -o {} -j MASQUERADE",
-            netns_metadata.veth2_ip, cli.iface_name
-        ),
-    )
-    .await;
-    run_iptables(
-        &cli,
-        format!("-D FORWARD -i {} -o {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
-    )
-    .await;
-    run_iptables(
-        &cli,
-        format!("-D FORWARD -o {} -i {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
-    )
-    .await;
+            netns_metadata.veth2_ip, network.iface_name
+        ))
+        .await;
+    network
+        .run_iptables(format!(
+            "-D FORWARD -i {} -o {} -j ACCEPT",
+            network.iface_name, netns_metadata.veth1_name
+        ))
+        .await;
+    network
+        .run_iptables(format!(
+            "-D FORWARD -o {} -i {} -j ACCEPT",
+            network.iface_name, netns_metadata.veth1_name
+        ))
+        .await;
 }
 
-async fn check_with_netns(cli: Cli, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
+async fn check_with_netns(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle, netns_metadata: NetNsMetadata) {
     let netns = NetNs::get(netns_metadata.netns_name).expect("Could not get netns");
 
-    run_iptables(
-        &cli,
-        format!(
+    network
+        .run_iptables(format!(
             "-t nat -C POSTROUTING -s {} -o {} -j MASQUERADE",
-            netns_metadata.veth2_ip, cli.iface_name
-        ),
-    )
-    .await;
-    run_iptables(
-        &cli,
-        format!("-C FORWARD -i {} -o {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
-    )
-    .await;
-    run_iptables(
-        &cli,
-        format!("-C FORWARD -o {} -i {} -j ACCEPT", cli.iface_name, netns_metadata.veth1_name),
-    )
-    .await;
+            netns_metadata.veth2_ip, network.iface_name
+        ))
+        .await;
+    network
+        .run_iptables(format!(
+            "-C FORWARD -i {} -o {} -j ACCEPT",
+            network.iface_name, netns_metadata.veth1_name
+        ))
+        .await;
+    network
+        .run_iptables(format!(
+            "-C FORWARD -o {} -i {} -j ACCEPT",
+            network.iface_name, netns_metadata.veth1_name
+        ))
+        .await;
 
     netns
         .run_async(|| async {
-            run_iptables(
-                &cli,
-                format!(
+            network
+                .run_iptables(format!(
                     "-t nat -C POSTROUTING -o {} -s {} -j SNAT --to {}",
                     netns_metadata.veth2_name,
                     netns_metadata.guest_ip,
                     netns_metadata.veth2_ip.address()
-                ),
-            )
-            .await;
+                ))
+                .await;
 
             if let Some(ref forwarded_guest_ip) = netns_metadata.forwarded_guest_ip {
-                run_iptables(
-                    &cli,
-                    format!(
+                network
+                    .run_iptables(format!(
                         "-t nat -C PREROUTING -i {} -d {} -j DNAT --to {}",
                         netns_metadata.veth2_name, forwarded_guest_ip, netns_metadata.guest_ip
-                    ),
-                )
-                .await;
+                    ))
+                    .await;
             }
         })
         .await;

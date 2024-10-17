@@ -1,0 +1,19 @@
+[package]
+name = "fcnet"
+version = "0.3.0"
+edition = "2021"
+description = "A library for Firecracker microVM networking"
+license = "MIT"
+keywords = ["firecracker", "microvm", "networking"]
+categories = ["network-programming"]
+repository = "https://github.com/kanpov/fcnet"
+readme = "README.md"
+
+[dependencies]
+tokio = { version = "1.40.0", features = ["process"] }
+futures-util = { version = "0.3.31", default-features = false }
+netns-rs = "0.1.0"
+rtnetlink = "0.14.1"
+netlink-packet-route = "0.19"
+tokio-tun = "0.12.0"
+cidr = "0.3.0"

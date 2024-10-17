@@ -1,35 +1,8 @@
-[package]
-name = "fcnet"
-version = "0.2.0"
-edition = "2021"
-description = "A user-friendly tool for Firecracker microVM networking"
-license = "MIT"
-keywords = ["firecracker", "microvm", "networking"]
-categories = ["network-programming"]
-repository = "https://github.com/kanpov/fcnet"
-readme = "README.md"
+[workspace]
+resolver = "2"
+members = ["fcnet"]
 
 [profile.release]
 lto = "fat"
 strip = "symbols"
 codegen-units = 1
-
-[dependencies]
-clap = { version = "4.5.20", features = ["derive"] }
-
-# tokio async rt + process for invoking iptables + stream utils
-tokio = { version = "1.40.0", features = [
-    "macros",
-    "rt-multi-thread",
-    "process",
-] }
-futures-util = { version = "0.3.31", default-features = false }
-# netns
-netns-rs = "0.1.0"
-# iproute2 directly via rtnetlink
-rtnetlink = "0.14.1"
-netlink-packet-route = "0.19"
-# tap device creation
-tokio-tun = "0.12.0"
-# cidr notation ips
-cidr = "0.3.0"
