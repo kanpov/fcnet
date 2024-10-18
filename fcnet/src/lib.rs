@@ -8,13 +8,15 @@ use std::{path::PathBuf, process::ExitStatus, sync::Arc};
 use cidr::IpInet;
 use futures_util::TryStreamExt;
 #[cfg(feature = "namespaced")]
-use netns::NamespacedData;
-#[cfg(feature = "namespaced")]
-use netns_rs::NetNs;
+use namespaced::NamespacedData;
 use tokio::process::Command;
 
 #[cfg(feature = "namespaced")]
+mod namespaced;
+#[cfg(feature = "namespaced")]
 mod netns;
+#[cfg(feature = "namespaced")]
+pub use netns::NetNsError;
 #[cfg(feature = "simple")]
 mod simple;
 
@@ -64,7 +66,7 @@ pub enum FirecrackerNetworkError {
     TapDeviceError(tokio_tun::Error),
     #[cfg(feature = "namespaced")]
     #[error("Interacting with a network namespace failed: `{0}`")]
-    NetnsError(netns_rs::Error),
+    NetnsError(NetNsError),
     #[error("A generic I/O error occurred: `{0}`")]
     IoError(std::io::Error),
     #[cfg(feature = "namespaced")]
@@ -108,7 +110,7 @@ impl FirecrackerNetwork {
                 veth2_ip: _,
                 guest_ip: _,
                 forwarded_guest_ip: _,
-            } => netns::run(operation, self, netlink_handle).await,
+            } => namespaced::run(operation, self, netlink_handle).await,
         }
     }
 
@@ -148,6 +150,8 @@ async fn use_netns_in_thread<
     namespaced_data: Arc<NamespacedData>,
     function: F,
 ) -> Result<(), FirecrackerNetworkError> {
+    use netns::NetNs;
+
     let netns = NetNs::get(netns_name).map_err(FirecrackerNetworkError::NetnsError)?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
 

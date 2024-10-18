@@ -53,5 +53,5 @@ fn main() {
         .build()
         .expect("Could not build Tokio runtime for blocking on the main future")
         .block_on(future)
-        .expect("Could not block on the main future");
+        .expect("Network operation failed");
 }
