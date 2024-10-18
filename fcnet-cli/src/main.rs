@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 use arguments::{Cli, Subcommands};
 use clap::Parser;
@@ -30,13 +30,13 @@ fn main() {
         },
     };
 
-    let network = Arc::new(FirecrackerNetwork {
+    let network = FirecrackerNetwork {
         iptables_path: PathBuf::from(cli.iptables_path),
         iface_name: cli.iface_name,
         tap_name: cli.tap_name,
         tap_ip: cli.tap_ip,
         network_type,
-    });
+    };
 
     let future = {
         if cli.operation_group.add {

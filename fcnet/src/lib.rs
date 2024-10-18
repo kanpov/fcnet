@@ -92,7 +92,7 @@ pub enum FirecrackerNetworkOperation {
 impl FirecrackerNetwork {
     /// Run an operation on this network, operating on an Arc and not a shared reference due to the internal threading
     /// details of the implementation.
-    pub async fn run(self: Arc<Self>, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
+    pub async fn run(&self, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
         let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
         tokio::task::spawn(connection);
 
@@ -123,20 +123,6 @@ impl FirecrackerNetwork {
             guest_iface_name.as_ref()
         )
     }
-
-    async fn run_iptables(&self, iptables_cmd: String) -> Result<(), FirecrackerNetworkError> {
-        let mut command = Command::new(&self.iptables_path);
-        for iptables_arg in iptables_cmd.split(' ') {
-            command.arg(iptables_arg);
-        }
-
-        let status = command.status().await.map_err(FirecrackerNetworkError::IoError)?;
-        if !status.success() {
-            return Err(FirecrackerNetworkError::FailedInvocation(status));
-        }
-
-        Ok(())
-    }
 }
 
 async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Result<u32, FirecrackerNetworkError> {
@@ -155,11 +141,10 @@ async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Res
 
 #[cfg(feature = "namespaced")]
 async fn use_netns_in_thread<
-    F: 'static + Send + FnOnce(Arc<FirecrackerNetwork>, Arc<NamespacedData>) -> Fut,
+    F: 'static + Send + FnOnce(Arc<NamespacedData>) -> Fut,
     Fut: Send + Future<Output = Result<(), FirecrackerNetworkError>>,
 >(
     netns_name: String,
-    network: Arc<FirecrackerNetwork>,
     namespaced_data: Arc<NamespacedData>,
     function: F,
 ) -> Result<(), FirecrackerNetworkError> {
@@ -171,7 +156,7 @@ async fn use_netns_in_thread<
             match tokio::runtime::Builder::new_current_thread().enable_all().build() {
                 Ok(runtime) => runtime.block_on(async move {
                     netns.enter().map_err(FirecrackerNetworkError::NetnsError)?;
-                    function(network, namespaced_data).await
+                    function(namespaced_data).await
                 }),
                 Err(err) => Err(FirecrackerNetworkError::IoError(err)),
             }
@@ -184,4 +169,18 @@ async fn use_netns_in_thread<
         Ok(result) => result,
         Err(err) => Err(FirecrackerNetworkError::ChannelRecvError(err)),
     }
+}
+
+async fn run_iptables(iptables_path: &PathBuf, iptables_cmd: String) -> Result<(), FirecrackerNetworkError> {
+    let mut command = Command::new(&iptables_path);
+    for iptables_arg in iptables_cmd.split(' ') {
+        command.arg(iptables_arg);
+    }
+
+    let status = command.status().await.map_err(FirecrackerNetworkError::IoError)?;
+    if !status.success() {
+        return Err(FirecrackerNetworkError::FailedInvocation(status));
+    }
+
+    Ok(())
 }

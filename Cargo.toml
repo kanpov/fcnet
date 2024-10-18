@@ -2,6 +2,10 @@
 resolver = "2"
 members = ["fcnet", "fcnet-cli"]
 
+[profile.dev]
+debug = false
+strip = "symbols"
+
 [profile.release]
 lto = "fat"
 strip = "symbols"

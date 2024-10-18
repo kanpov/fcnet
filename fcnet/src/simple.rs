@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
 use tokio_tun::TunBuilder;
 
-use crate::{get_link_index, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation};
+use crate::{get_link_index, run_iptables, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation};
 
 pub async fn run(
-    network: Arc<FirecrackerNetwork>,
+    network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
     operation: FirecrackerNetworkOperation,
 ) -> Result<(), FirecrackerNetworkError> {
@@ -16,7 +14,7 @@ pub async fn run(
     }
 }
 
-async fn add(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
+async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
     TunBuilder::new()
         .name(&network.tap_name)
         .tap()
@@ -32,21 +30,24 @@ async fn add(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    network
-        .run_iptables(format!("-t nat -A POSTROUTING -o {} -j MASQUERADE", network.iface_name))
-        .await?;
-    network
-        .run_iptables("-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string())
-        .await?;
-    network
-        .run_iptables(format!(
-            "-A FORWARD -i {} -o {} -j ACCEPT",
-            network.tap_name, network.iface_name
-        ))
-        .await
+    run_iptables(
+        &network.iptables_path,
+        format!("-t nat -A POSTROUTING -o {} -j MASQUERADE", network.iface_name),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        "-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string(),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!("-A FORWARD -i {} -o {} -j ACCEPT", network.tap_name, network.iface_name),
+    )
+    .await
 }
 
-async fn delete(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
+async fn delete(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
     let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await?;
     netlink_handle
         .link()
@@ -55,33 +56,39 @@ async fn delete(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Han
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    network
-        .run_iptables(format!("-t nat -D POSTROUTING -o {} -j MASQUERADE", network.iface_name))
-        .await?;
-    network
-        .run_iptables("-D FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string())
-        .await?;
-    network
-        .run_iptables(format!(
-            "-D FORWARD -i {} -o {} -j ACCEPT",
-            network.tap_name, network.iface_name
-        ))
-        .await
+    run_iptables(
+        &network.iptables_path,
+        format!("-t nat -D POSTROUTING -o {} -j MASQUERADE", network.iface_name),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        "-D FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string(),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!("-D FORWARD -i {} -o {} -j ACCEPT", network.tap_name, network.iface_name),
+    )
+    .await
 }
 
-async fn check(network: Arc<FirecrackerNetwork>, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
+async fn check(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
     get_link_index(network.tap_name.clone(), &netlink_handle).await?;
 
-    network
-        .run_iptables(format!("-t nat -C POSTROUTING -o {} -j MASQUERADE", network.iface_name))
-        .await?;
-    network
-        .run_iptables("-C FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string())
-        .await?;
-    network
-        .run_iptables(format!(
-            "-C FORWARD -i {} -o {} -j ACCEPT",
-            network.tap_name, network.iface_name
-        ))
-        .await
+    run_iptables(
+        &network.iptables_path,
+        format!("-t nat -C POSTROUTING -o {} -j MASQUERADE", network.iface_name),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        "-C FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT".to_string(),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!("-C FORWARD -i {} -o {} -j ACCEPT", network.tap_name, network.iface_name),
+    )
+    .await
 }

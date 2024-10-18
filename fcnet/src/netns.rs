@@ -8,7 +8,7 @@ use rtnetlink::IpVersion;
 use tokio_tun::TunBuilder;
 
 use crate::{
-    get_link_index, use_netns_in_thread, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation,
+    get_link_index, run_iptables, use_netns_in_thread, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation,
     FirecrackerNetworkType,
 };
 
@@ -24,10 +24,10 @@ pub struct NamespacedData {
 
 pub async fn run(
     operation: FirecrackerNetworkOperation,
-    network: Arc<FirecrackerNetwork>,
+    network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
-    fn make_namespaced_data(network: Arc<FirecrackerNetwork>) -> Arc<NamespacedData> {
+    fn make_namespaced_data(network: &FirecrackerNetwork) -> Arc<NamespacedData> {
         Arc::new(match network.network_type.clone() {
             #[cfg(feature = "simple")]
             FirecrackerNetworkType::Simple => unreachable!(),
@@ -52,15 +52,15 @@ pub async fn run(
     }
 
     match operation {
-        FirecrackerNetworkOperation::Add => add(make_namespaced_data(network.clone()), network, netlink_handle).await,
-        FirecrackerNetworkOperation::Check => check(make_namespaced_data(network.clone()), network, netlink_handle).await,
-        FirecrackerNetworkOperation::Delete => delete(make_namespaced_data(network.clone()), network).await,
+        FirecrackerNetworkOperation::Add => add(make_namespaced_data(network), network, netlink_handle).await,
+        FirecrackerNetworkOperation::Check => check(make_namespaced_data(network), network, netlink_handle).await,
+        FirecrackerNetworkOperation::Delete => delete(make_namespaced_data(network), network).await,
     }
 }
 
 async fn add(
     namespaced_data: Arc<NamespacedData>,
-    network: Arc<FirecrackerNetwork>,
+    network: &FirecrackerNetwork,
     outer_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
     outer_handle
@@ -102,20 +102,22 @@ async fn add(
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
+    let cloned_tap_name = network.tap_name.clone();
+    let cloned_tap_ip = network.tap_ip.clone();
+    let cloned_iptables_path = network.iptables_path.clone();
     use_netns_in_thread(
         namespaced_data.netns_name.clone(),
-        network.clone(),
         namespaced_data.clone(),
-        |network, namespaced_data| async move {
+        move |namespaced_data| async move {
             TunBuilder::new()
-                .name(&network.tap_name)
+                .name(&cloned_tap_name)
                 .tap()
                 .persist()
                 .up()
                 .try_build()
                 .map_err(FirecrackerNetworkError::TapDeviceError)?;
-            let (conn, inner_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
-            tokio::spawn(conn);
+            let (connection, inner_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
+            tokio::task::spawn(connection);
 
             let veth2_idx = get_link_index(namespaced_data.veth2_name.clone(), &inner_handle).await?;
             inner_handle
@@ -155,10 +157,10 @@ async fn add(
                     .map_err(FirecrackerNetworkError::NetlinkOperationError)?,
             }
 
-            let tap_idx = get_link_index(network.tap_name.clone(), &inner_handle).await?;
+            let tap_idx = get_link_index(cloned_tap_name, &inner_handle).await?;
             inner_handle
                 .address()
-                .add(tap_idx, network.tap_ip.address(), network.tap_ip.network_length())
+                .add(tap_idx, cloned_tap_ip.address(), cloned_tap_ip.network_length())
                 .execute()
                 .await
                 .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
@@ -170,22 +172,26 @@ async fn add(
                 .await
                 .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-            network
-                .run_iptables(format!(
+            run_iptables(
+                &cloned_iptables_path,
+                format!(
                     "-t nat -A POSTROUTING -o {} -s {} -j SNAT --to {}",
                     namespaced_data.veth2_name,
                     namespaced_data.guest_ip,
                     namespaced_data.veth2_ip.address()
-                ))
-                .await?;
+                ),
+            )
+            .await?;
 
             if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
-                network
-                    .run_iptables(format!(
+                run_iptables(
+                    &cloned_iptables_path,
+                    format!(
                         "-t nat -A PREROUTING -i {} -d {} -j DNAT --to {}",
                         namespaced_data.veth2_name, forwarded_guest_ip, namespaced_data.guest_ip
-                    ))
-                    .await?;
+                    ),
+                )
+                .await?;
             }
 
             Ok(())
@@ -193,24 +199,30 @@ async fn add(
     )
     .await?;
 
-    network
-        .run_iptables(format!(
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-t nat -A POSTROUTING -s {} -o {} -j MASQUERADE",
             namespaced_data.veth2_ip, network.iface_name
-        ))
-        .await?;
-    network
-        .run_iptables(format!(
+        ),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-A FORWARD -i {} -o {} -j ACCEPT",
             network.iface_name, namespaced_data.veth1_name
-        ))
-        .await?;
-    network
-        .run_iptables(format!(
+        ),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-A FORWARD -o {} -i {} -j ACCEPT",
             network.iface_name, namespaced_data.veth1_name
-        ))
-        .await?;
+        ),
+    )
+    .await?;
 
     if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
         match forwarded_guest_ip {
@@ -244,77 +256,93 @@ async fn add(
     Ok(())
 }
 
-async fn delete(namespaced_data: Arc<NamespacedData>, network: Arc<FirecrackerNetwork>) -> Result<(), FirecrackerNetworkError> {
+async fn delete(namespaced_data: Arc<NamespacedData>, network: &FirecrackerNetwork) -> Result<(), FirecrackerNetworkError> {
     NetNs::get(&namespaced_data.netns_name)
         .map_err(FirecrackerNetworkError::NetnsError)?
         .remove()
         .map_err(FirecrackerNetworkError::NetnsError)?;
 
-    network
-        .run_iptables(format!(
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-t nat -D POSTROUTING -s {} -o {} -j MASQUERADE",
             namespaced_data.veth2_ip, network.iface_name
-        ))
-        .await?;
-    network
-        .run_iptables(format!(
+        ),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-D FORWARD -i {} -o {} -j ACCEPT",
             network.iface_name, namespaced_data.veth1_name
-        ))
-        .await?;
-    network
-        .run_iptables(format!(
+        ),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-D FORWARD -o {} -i {} -j ACCEPT",
             network.iface_name, namespaced_data.veth1_name
-        ))
-        .await
+        ),
+    )
+    .await
 }
 
 async fn check(
     namespaced_data: Arc<NamespacedData>,
-    network: Arc<FirecrackerNetwork>,
+    network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
-    network
-        .run_iptables(format!(
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-t nat -C POSTROUTING -s {} -o {} -j MASQUERADE",
             namespaced_data.veth2_ip, network.iface_name
-        ))
-        .await?;
-    network
-        .run_iptables(format!(
+        ),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-C FORWARD -i {} -o {} -j ACCEPT",
             network.iface_name, namespaced_data.veth1_name
-        ))
-        .await?;
-    network
-        .run_iptables(format!(
+        ),
+    )
+    .await?;
+    run_iptables(
+        &network.iptables_path,
+        format!(
             "-C FORWARD -o {} -i {} -j ACCEPT",
             network.iface_name, namespaced_data.veth1_name
-        ))
-        .await?;
+        ),
+    )
+    .await?;
 
+    let cloned_iptables_path = network.iptables_path.clone();
     use_netns_in_thread(
         namespaced_data.netns_name.clone(),
-        network,
         namespaced_data.clone(),
-        |network, namespaced_data| async move {
-            network
-                .run_iptables(format!(
+        |namespaced_data| async move {
+            run_iptables(
+                &cloned_iptables_path,
+                format!(
                     "-t nat -C POSTROUTING -o {} -s {} -j SNAT --to {}",
                     namespaced_data.veth2_name,
                     namespaced_data.guest_ip,
                     namespaced_data.veth2_ip.address()
-                ))
-                .await?;
+                ),
+            )
+            .await?;
 
             if let Some(ref forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
-                network
-                    .run_iptables(format!(
+                run_iptables(
+                    &cloned_iptables_path,
+                    format!(
                         "-t nat -C PREROUTING -i {} -d {} -j DNAT --to {}",
                         namespaced_data.veth2_name, forwarded_guest_ip, namespaced_data.guest_ip
-                    ))
-                    .await?;
+                    ),
+                )
+                .await?;
             }
 
             Ok(())
