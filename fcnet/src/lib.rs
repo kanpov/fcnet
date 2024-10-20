@@ -3,12 +3,10 @@ compile_error!("Either \"simple\" or \"namespaced\" networking feature flags mus
 
 #[cfg(feature = "namespaced")]
 use std::{future::Future, net::IpAddr};
-use std::{path::PathBuf, process::ExitStatus, sync::Arc};
+use std::{path::PathBuf, process::ExitStatus};
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
-#[cfg(feature = "namespaced")]
-use namespaced::NamespacedData;
 use tokio::process::Command;
 
 #[cfg(feature = "namespaced")]
@@ -92,8 +90,7 @@ pub enum FirecrackerNetworkOperation {
 }
 
 impl FirecrackerNetwork {
-    /// Run an operation on this network, operating on an Arc and not a shared reference due to the internal threading
-    /// details of the implementation.
+    /// Run an operation on this network (add, check or delete).
     pub async fn run(&self, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
         let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
         tokio::task::spawn(connection);
@@ -142,13 +139,9 @@ async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Res
 }
 
 #[cfg(feature = "namespaced")]
-async fn use_netns_in_thread<
-    F: 'static + Send + FnOnce(Arc<NamespacedData>) -> Fut,
-    Fut: Send + Future<Output = Result<(), FirecrackerNetworkError>>,
->(
+async fn use_netns_in_thread(
     netns_name: String,
-    namespaced_data: Arc<NamespacedData>,
-    function: F,
+    future: impl 'static + Send + Future<Output = Result<(), FirecrackerNetworkError>>,
 ) -> Result<(), FirecrackerNetworkError> {
     use netns::NetNs;
 
@@ -160,7 +153,7 @@ async fn use_netns_in_thread<
             match tokio::runtime::Builder::new_current_thread().enable_all().build() {
                 Ok(runtime) => runtime.block_on(async move {
                     netns.enter().map_err(FirecrackerNetworkError::NetnsError)?;
-                    function(namespaced_data).await
+                    future.await
                 }),
                 Err(err) => Err(FirecrackerNetworkError::IoError(err)),
             }

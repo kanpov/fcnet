@@ -1,4 +1,4 @@
-use std::{net::IpAddr, os::fd::AsRawFd, sync::Arc};
+use std::{net::IpAddr, os::fd::AsRawFd};
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
@@ -11,14 +11,14 @@ use crate::{
     FirecrackerNetworkOperation, FirecrackerNetworkType,
 };
 
-pub struct NamespacedData {
-    netns_name: String,
-    veth1_name: String,
-    veth2_name: String,
-    veth1_ip: IpInet,
-    veth2_ip: IpInet,
-    guest_ip: IpAddr,
-    forwarded_guest_ip: Option<IpAddr>,
+struct NamespacedData<'a> {
+    netns_name: &'a str,
+    veth1_name: &'a str,
+    veth2_name: &'a str,
+    veth1_ip: &'a IpInet,
+    veth2_ip: &'a IpInet,
+    guest_ip: &'a IpAddr,
+    forwarded_guest_ip: &'a Option<IpAddr>,
 }
 
 pub async fn run(
@@ -26,51 +26,49 @@ pub async fn run(
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
-    fn make_namespaced_data(network: &FirecrackerNetwork) -> Arc<NamespacedData> {
-        Arc::new(match network.network_type.clone() {
-            #[cfg(feature = "simple")]
-            FirecrackerNetworkType::Simple => unreachable!(),
-            FirecrackerNetworkType::Namespaced {
-                netns_name,
-                veth1_name,
-                veth2_name,
-                veth1_ip,
-                veth2_ip,
-                guest_ip,
-                forwarded_guest_ip,
-            } => NamespacedData {
-                netns_name,
-                veth1_name,
-                veth2_name,
-                veth1_ip,
-                veth2_ip,
-                guest_ip,
-                forwarded_guest_ip,
-            },
-        })
-    }
+    let namespaced_data = match network.network_type {
+        #[cfg(feature = "simple")]
+        FirecrackerNetworkType::Simple => unreachable!(),
+        FirecrackerNetworkType::Namespaced {
+            ref netns_name,
+            ref veth1_name,
+            ref veth2_name,
+            ref veth1_ip,
+            ref veth2_ip,
+            ref guest_ip,
+            ref forwarded_guest_ip,
+        } => NamespacedData {
+            netns_name,
+            veth1_name,
+            veth2_name,
+            veth1_ip,
+            veth2_ip,
+            guest_ip,
+            forwarded_guest_ip,
+        },
+    };
 
     match operation {
-        FirecrackerNetworkOperation::Add => add(make_namespaced_data(network), network, netlink_handle).await,
-        FirecrackerNetworkOperation::Check => check(make_namespaced_data(network), network, netlink_handle).await,
-        FirecrackerNetworkOperation::Delete => delete(make_namespaced_data(network), network).await,
+        FirecrackerNetworkOperation::Add => add(namespaced_data, network, netlink_handle).await,
+        FirecrackerNetworkOperation::Check => check(namespaced_data, network, netlink_handle).await,
+        FirecrackerNetworkOperation::Delete => delete(namespaced_data, network).await,
     }
 }
 
 async fn add(
-    namespaced_data: Arc<NamespacedData>,
+    namespaced_data: NamespacedData<'_>,
     network: &FirecrackerNetwork,
     outer_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
     outer_handle
         .link()
         .add()
-        .veth(namespaced_data.veth1_name.clone(), namespaced_data.veth2_name.clone())
+        .veth(namespaced_data.veth1_name.to_string(), namespaced_data.veth2_name.to_string())
         .execute()
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    let veth1_idx = get_link_index(namespaced_data.veth1_name.clone(), &outer_handle).await?;
+    let veth1_idx = get_link_index(namespaced_data.veth1_name.to_string(), &outer_handle).await?;
     outer_handle
         .address()
         .add(
@@ -90,7 +88,7 @@ async fn add(
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
     outer_handle
         .link()
-        .set(get_link_index(namespaced_data.veth2_name.clone(), &outer_handle).await?)
+        .set(get_link_index(namespaced_data.veth2_name.to_string(), &outer_handle).await?)
         .setns_by_fd(
             NetNs::new(&namespaced_data.netns_name)
                 .map_err(FirecrackerNetworkError::NetnsError)?
@@ -101,15 +99,17 @@ async fn add(
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    let cloned_tap_name = network.tap_name.clone();
-    let cloned_tap_ip = network.tap_ip.clone();
-    let cloned_iptables_path = network.iptables_path.clone();
-    use_netns_in_thread(
-        namespaced_data.netns_name.clone(),
-        namespaced_data.clone(),
-        move |namespaced_data| async move {
+    {
+        let tap_name = network.tap_name.clone();
+        let tap_ip = network.tap_ip.clone();
+        let iptables_path = network.iptables_path.clone();
+        let veth2_name = namespaced_data.veth2_name.to_string();
+        let veth2_ip = *namespaced_data.veth2_ip;
+        let guest_ip = *namespaced_data.guest_ip;
+        let forwarded_guest_ip = *namespaced_data.forwarded_guest_ip;
+        use_netns_in_thread(namespaced_data.netns_name.to_string(), async move {
             TunBuilder::new()
-                .name(&cloned_tap_name)
+                .name(&tap_name)
                 .tap()
                 .persist()
                 .up()
@@ -118,14 +118,10 @@ async fn add(
             let (connection, inner_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
             tokio::task::spawn(connection);
 
-            let veth2_idx = get_link_index(namespaced_data.veth2_name.clone(), &inner_handle).await?;
+            let veth2_idx = get_link_index(veth2_name.clone(), &inner_handle).await?;
             inner_handle
                 .address()
-                .add(
-                    veth2_idx,
-                    namespaced_data.veth2_ip.address(),
-                    namespaced_data.veth2_ip.network_length(),
-                )
+                .add(veth2_idx, veth2_ip.address(), veth2_ip.network_length())
                 .execute()
                 .await
                 .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
@@ -137,7 +133,7 @@ async fn add(
                 .await
                 .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-            match namespaced_data.veth1_ip {
+            match veth2_ip {
                 IpInet::V4(ref veth1_ip) => inner_handle
                     .route()
                     .add()
@@ -156,10 +152,10 @@ async fn add(
                     .map_err(FirecrackerNetworkError::NetlinkOperationError)?,
             }
 
-            let tap_idx = get_link_index(cloned_tap_name, &inner_handle).await?;
+            let tap_idx = get_link_index(tap_name, &inner_handle).await?;
             inner_handle
                 .address()
-                .add(tap_idx, cloned_tap_ip.address(), cloned_tap_ip.network_length())
+                .add(tap_idx, tap_ip.address(), tap_ip.network_length())
                 .execute()
                 .await
                 .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
@@ -172,31 +168,31 @@ async fn add(
                 .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
             run_iptables(
-                &cloned_iptables_path,
+                &iptables_path,
                 format!(
                     "-t nat -A POSTROUTING -o {} -s {} -j SNAT --to {}",
-                    namespaced_data.veth2_name,
-                    namespaced_data.guest_ip,
-                    namespaced_data.veth2_ip.address()
+                    veth2_name,
+                    guest_ip,
+                    veth2_ip.address()
                 ),
             )
             .await?;
 
-            if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
+            if let Some(forwarded_guest_ip) = forwarded_guest_ip {
                 run_iptables(
-                    &cloned_iptables_path,
+                    &iptables_path,
                     format!(
                         "-t nat -A PREROUTING -i {} -d {} -j DNAT --to {}",
-                        namespaced_data.veth2_name, forwarded_guest_ip, namespaced_data.guest_ip
+                        veth2_name, forwarded_guest_ip, guest_ip
                     ),
                 )
                 .await?;
             }
 
             Ok(())
-        },
-    )
-    .await?;
+        })
+        .await?;
+    }
 
     run_iptables(
         &network.iptables_path,
@@ -229,7 +225,7 @@ async fn add(
                 .route()
                 .add()
                 .v4()
-                .destination_prefix(v4, 32)
+                .destination_prefix(*v4, 32)
                 .gateway(match namespaced_data.veth2_ip.address() {
                     IpAddr::V4(v4) => v4,
                     IpAddr::V6(_) => panic!("Veth2 IP and host forward IP must be both v4, or both v6"),
@@ -241,7 +237,7 @@ async fn add(
                 .route()
                 .add()
                 .v6()
-                .destination_prefix(v6, 128)
+                .destination_prefix(*v6, 128)
                 .gateway(match namespaced_data.veth2_ip.address() {
                     IpAddr::V4(_) => panic!("Veth2 IP and host forward IP must be both v4, or both v6"),
                     IpAddr::V6(v6) => v6,
@@ -255,7 +251,7 @@ async fn add(
     Ok(())
 }
 
-async fn delete(namespaced_data: Arc<NamespacedData>, network: &FirecrackerNetwork) -> Result<(), FirecrackerNetworkError> {
+async fn delete(namespaced_data: NamespacedData<'_>, network: &FirecrackerNetwork) -> Result<(), FirecrackerNetworkError> {
     NetNs::get(&namespaced_data.netns_name)
         .map_err(FirecrackerNetworkError::NetnsError)?
         .remove()
@@ -288,7 +284,7 @@ async fn delete(namespaced_data: Arc<NamespacedData>, network: &FirecrackerNetwo
 }
 
 async fn check(
-    namespaced_data: Arc<NamespacedData>,
+    namespaced_data: NamespacedData<'_>,
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
@@ -317,37 +313,39 @@ async fn check(
     )
     .await?;
 
-    let cloned_iptables_path = network.iptables_path.clone();
-    use_netns_in_thread(
-        namespaced_data.netns_name.clone(),
-        namespaced_data.clone(),
-        |namespaced_data| async move {
+    {
+        let iptables_path = network.iptables_path.clone();
+        let forwarded_guest_ip = *namespaced_data.forwarded_guest_ip;
+        let veth2_name = namespaced_data.veth2_name.to_string();
+        let veth2_ip = *namespaced_data.veth2_ip;
+        let guest_ip = *namespaced_data.guest_ip;
+        use_netns_in_thread(namespaced_data.netns_name.to_string(), async move {
             run_iptables(
-                &cloned_iptables_path,
+                &iptables_path,
                 format!(
                     "-t nat -C POSTROUTING -o {} -s {} -j SNAT --to {}",
-                    namespaced_data.veth2_name,
-                    namespaced_data.guest_ip,
-                    namespaced_data.veth2_ip.address()
+                    veth2_name,
+                    guest_ip,
+                    veth2_ip.address()
                 ),
             )
             .await?;
 
-            if let Some(ref forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
+            if let Some(ref forwarded_guest_ip) = forwarded_guest_ip {
                 run_iptables(
-                    &cloned_iptables_path,
+                    &iptables_path,
                     format!(
                         "-t nat -C PREROUTING -i {} -d {} -j DNAT --to {}",
-                        namespaced_data.veth2_name, forwarded_guest_ip, namespaced_data.guest_ip
+                        veth2_name, forwarded_guest_ip, guest_ip
                     ),
                 )
                 .await?;
             }
 
             Ok(())
-        },
-    )
-    .await?;
+        })
+        .await?;
+    }
 
     if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
         let ip_version = match forwarded_guest_ip {
@@ -366,7 +364,7 @@ async fn check(
                         _ => continue,
                     };
 
-                    if ip_addr == forwarded_guest_ip {
+                    if ip_addr == *forwarded_guest_ip {
                         route_message = Some(current_route_message);
                         break;
                     }
