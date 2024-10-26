@@ -7,6 +7,7 @@ use std::{path::PathBuf, process::ExitStatus};
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
+use nftables::types::NfFamily;
 use tokio::process::Command;
 
 #[cfg(feature = "namespaced")]
@@ -18,11 +19,18 @@ pub use netns::NetNsError;
 #[cfg(feature = "simple")]
 mod simple;
 
+const NFT_NAT_TABLE: &str = "fcnet-nat";
+const NFT_NAT_POSTROUTING_CHAIN: &str = "POSTROUTING";
+const NFT_FILTER_TABLE: &str = "fcnet-filter";
+const NFT_FILTER_FORWARD_CHAIN: &str = "POSTROUTING";
+
 /// A configuration for a Firecracker microVM network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FirecrackerNetwork {
-    /// The path to the "iptables" (or "iptables-nft") binary on the system.
-    pub iptables_path: PathBuf,
+    /// The optional explicit path to "nft" to use when invoking it.
+    pub nft_path: Option<String>,
+    /// Whether to use IPv6.
+    pub ipv6: bool,
     /// The name of the host network interface that handles real connectivity (i.e. via Ethernet or Wi-Fi).
     pub iface_name: String,
     /// The name of the tap device to direct Firecracker to use.
@@ -90,6 +98,13 @@ pub enum FirecrackerNetworkOperation {
 }
 
 impl FirecrackerNetwork {
+    fn nf_family(&self) -> NfFamily {
+        match self.ipv6 {
+            true => NfFamily::IP6,
+            false => NfFamily::IP,
+        }
+    }
+
     /// Run an operation on this network (add, check or delete).
     pub async fn run(&self, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
         let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;

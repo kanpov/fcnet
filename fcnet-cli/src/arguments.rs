@@ -11,12 +11,10 @@ use clap::{Args, Parser, Subcommand};
     propagate_version = true
 )]
 pub struct Cli {
-    #[arg(
-        help = "Path to the iptables binary to use for veth and NAT-related routing, iptables-nft is supported",
-        long = "iptables-path",
-        default_value = "/usr/sbin/iptables"
-    )]
-    pub iptables_path: String,
+    #[arg(help = "Optional explicit path to the \"nft\" binary", long = "nft-path")]
+    pub nft_path: Option<String>,
+    #[arg(help = "Whether to use IPv6 support", long = "ipv6")]
+    pub ipv6: bool,
     #[arg(
         help = "Network interface in the default netns that handles real connectivity",
         long = "iface",

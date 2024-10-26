@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use arguments::{Cli, Subcommands};
 use clap::Parser;
 use fcnet::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
@@ -31,7 +29,8 @@ fn main() {
     };
 
     let network = FirecrackerNetwork {
-        iptables_path: PathBuf::from(cli.iptables_path),
+        nft_path: cli.nft_path,
+        ipv6: cli.ipv6,
         iface_name: cli.iface_name,
         tap_name: cli.tap_name,
         tap_ip: cli.tap_ip,

@@ -102,7 +102,7 @@ async fn add(
     {
         let tap_name = network.tap_name.clone();
         let tap_ip = network.tap_ip.clone();
-        let iptables_path = network.iptables_path.clone();
+        // let iptables_path = network.iptables_path.clone();
         let veth2_name = namespaced_data.veth2_name.to_string();
         let veth2_ip = *namespaced_data.veth2_ip;
         let guest_ip = *namespaced_data.guest_ip;
@@ -167,26 +167,26 @@ async fn add(
                 .await
                 .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-            run_iptables(
-                &iptables_path,
-                format!(
-                    "-t nat -A POSTROUTING -o {} -s {} -j SNAT --to {}",
-                    veth2_name,
-                    guest_ip,
-                    veth2_ip.address()
-                ),
-            )
-            .await?;
+            // run_iptables(
+            //     &iptables_path,
+            //     format!(
+            //         "-t nat -A POSTROUTING -o {} -s {} -j SNAT --to {}",
+            //         veth2_name,
+            //         guest_ip,
+            //         veth2_ip.address()
+            //     ),
+            // )
+            // .await?;
 
             if let Some(forwarded_guest_ip) = forwarded_guest_ip {
-                run_iptables(
-                    &iptables_path,
-                    format!(
-                        "-t nat -A PREROUTING -i {} -d {} -j DNAT --to {}",
-                        veth2_name, forwarded_guest_ip, guest_ip
-                    ),
-                )
-                .await?;
+                // run_iptables(
+                //     &iptables_path,
+                //     format!(
+                //         "-t nat -A PREROUTING -i {} -d {} -j DNAT --to {}",
+                //         veth2_name, forwarded_guest_ip, guest_ip
+                //     ),
+                // )
+                // .await?;
             }
 
             Ok(())
@@ -194,30 +194,30 @@ async fn add(
         .await?;
     }
 
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-t nat -A POSTROUTING -s {} -o {} -j MASQUERADE",
-            namespaced_data.veth2_ip, network.iface_name
-        ),
-    )
-    .await?;
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-A FORWARD -i {} -o {} -j ACCEPT",
-            network.iface_name, namespaced_data.veth1_name
-        ),
-    )
-    .await?;
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-A FORWARD -o {} -i {} -j ACCEPT",
-            network.iface_name, namespaced_data.veth1_name
-        ),
-    )
-    .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-t nat -A POSTROUTING -s {} -o {} -j MASQUERADE",
+    //         namespaced_data.veth2_ip, network.iface_name
+    //     ),
+    // )
+    // .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-A FORWARD -i {} -o {} -j ACCEPT",
+    //         network.iface_name, namespaced_data.veth1_name
+    //     ),
+    // )
+    // .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-A FORWARD -o {} -i {} -j ACCEPT",
+    //         network.iface_name, namespaced_data.veth1_name
+    //     ),
+    // )
+    // .await?;
 
     if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
         match forwarded_guest_ip {
@@ -257,30 +257,31 @@ async fn delete(namespaced_data: NamespacedData<'_>, network: &FirecrackerNetwor
         .remove()
         .map_err(FirecrackerNetworkError::NetnsError)?;
 
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-t nat -D POSTROUTING -s {} -o {} -j MASQUERADE",
-            namespaced_data.veth2_ip, network.iface_name
-        ),
-    )
-    .await?;
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-D FORWARD -i {} -o {} -j ACCEPT",
-            network.iface_name, namespaced_data.veth1_name
-        ),
-    )
-    .await?;
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-D FORWARD -o {} -i {} -j ACCEPT",
-            network.iface_name, namespaced_data.veth1_name
-        ),
-    )
-    .await
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-t nat -D POSTROUTING -s {} -o {} -j MASQUERADE",
+    //         namespaced_data.veth2_ip, network.iface_name
+    //     ),
+    // )
+    // .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-D FORWARD -i {} -o {} -j ACCEPT",
+    //         network.iface_name, namespaced_data.veth1_name
+    //     ),
+    // )
+    // .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-D FORWARD -o {} -i {} -j ACCEPT",
+    //         network.iface_name, namespaced_data.veth1_name
+    //     ),
+    // )
+    // .await
+    Ok(())
 }
 
 async fn check(
@@ -288,58 +289,58 @@ async fn check(
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-t nat -C POSTROUTING -s {} -o {} -j MASQUERADE",
-            namespaced_data.veth2_ip, network.iface_name
-        ),
-    )
-    .await?;
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-C FORWARD -i {} -o {} -j ACCEPT",
-            network.iface_name, namespaced_data.veth1_name
-        ),
-    )
-    .await?;
-    run_iptables(
-        &network.iptables_path,
-        format!(
-            "-C FORWARD -o {} -i {} -j ACCEPT",
-            network.iface_name, namespaced_data.veth1_name
-        ),
-    )
-    .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-t nat -C POSTROUTING -s {} -o {} -j MASQUERADE",
+    //         namespaced_data.veth2_ip, network.iface_name
+    //     ),
+    // )
+    // .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-C FORWARD -i {} -o {} -j ACCEPT",
+    //         network.iface_name, namespaced_data.veth1_name
+    //     ),
+    // )
+    // .await?;
+    // run_iptables(
+    //     &network.iptables_path,
+    //     format!(
+    //         "-C FORWARD -o {} -i {} -j ACCEPT",
+    //         network.iface_name, namespaced_data.veth1_name
+    //     ),
+    // )
+    // .await?;
 
     {
-        let iptables_path = network.iptables_path.clone();
+        // let iptables_path = network.iptables_path.clone();
         let forwarded_guest_ip = *namespaced_data.forwarded_guest_ip;
         let veth2_name = namespaced_data.veth2_name.to_string();
         let veth2_ip = *namespaced_data.veth2_ip;
         let guest_ip = *namespaced_data.guest_ip;
         use_netns_in_thread(namespaced_data.netns_name.to_string(), async move {
-            run_iptables(
-                &iptables_path,
-                format!(
-                    "-t nat -C POSTROUTING -o {} -s {} -j SNAT --to {}",
-                    veth2_name,
-                    guest_ip,
-                    veth2_ip.address()
-                ),
-            )
-            .await?;
+            // run_iptables(
+            //     &iptables_path,
+            //     format!(
+            //         "-t nat -C POSTROUTING -o {} -s {} -j SNAT --to {}",
+            //         veth2_name,
+            //         guest_ip,
+            //         veth2_ip.address()
+            //     ),
+            // )
+            // .await?;
 
             if let Some(ref forwarded_guest_ip) = forwarded_guest_ip {
-                run_iptables(
-                    &iptables_path,
-                    format!(
-                        "-t nat -C PREROUTING -i {} -d {} -j DNAT --to {}",
-                        veth2_name, forwarded_guest_ip, guest_ip
-                    ),
-                )
-                .await?;
+                // run_iptables(
+                //     &iptables_path,
+                //     format!(
+                //         "-t nat -C PREROUTING -i {} -d {} -j DNAT --to {}",
+                //         veth2_name, forwarded_guest_ip, guest_ip
+                //     ),
+                // )
+                // .await?;
             }
 
             Ok(())
