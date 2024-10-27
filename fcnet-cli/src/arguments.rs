@@ -1,7 +1,8 @@
 use std::{net::IpAddr, str::FromStr};
 
 use cidr::IpInet;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use fcnet::FirecrackerIpStack;
 
 #[derive(Parser)]
 #[command(
@@ -11,12 +12,12 @@ use clap::{Args, Parser, Subcommand};
     propagate_version = true
 )]
 pub struct Cli {
-    #[arg(
-        help = "Path to the iptables binary to use for veth and NAT-related routing, iptables-nft is supported",
-        long = "iptables-path",
-        default_value = "/usr/sbin/iptables"
-    )]
-    pub iptables_path: String,
+    #[arg(help = "Optional explicit path to the \"nft\" binary", long = "nft-path")]
+    pub nft_path: Option<String>,
+    #[arg(help = "Which IP stack to use", long = "ip-stack", default_value_t)]
+    pub ip_stack: IpStackWrapper,
+    #[arg(help = "The CIDR IP of the guest", long = "guest-ip", default_value_t = IpInet::from_str("172.16.0.2/24").unwrap())]
+    pub guest_ip: IpInet,
     #[arg(
         help = "Network interface in the default netns that handles real connectivity",
         long = "iface",
@@ -31,6 +32,35 @@ pub struct Cli {
     pub operation_group: OperationGroup,
     #[command(subcommand)]
     pub subcommands: Subcommands,
+}
+
+#[derive(ValueEnum, Clone, Copy, Default)]
+pub enum IpStackWrapper {
+    #[default]
+    V4,
+    V6,
+    Dual,
+}
+
+impl ToString for IpStackWrapper {
+    fn to_string(&self) -> String {
+        match self {
+            IpStackWrapper::V4 => "v4",
+            IpStackWrapper::V6 => "v6",
+            IpStackWrapper::Dual => "dual",
+        }
+        .to_string()
+    }
+}
+
+impl From<IpStackWrapper> for FirecrackerIpStack {
+    fn from(value: IpStackWrapper) -> Self {
+        match value {
+            IpStackWrapper::V4 => FirecrackerIpStack::V4,
+            IpStackWrapper::V6 => FirecrackerIpStack::V6,
+            IpStackWrapper::Dual => FirecrackerIpStack::Dual,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -68,12 +98,6 @@ pub enum Subcommands {
             default_value_t = IpInet::from_str("10.0.0.2/24").unwrap()
         )]
         veth2_ip: IpInet,
-        #[arg(
-            help = "The IP of the guest (not the tap device)",
-            long = "guest-ip",
-            default_value_t = IpAddr::from_str("172.16.0.2").unwrap()
-        )]
-        guest_ip: IpAddr,
         #[arg(
             help = "Optionally, an IP for forwarding connections to the guest from outside the netns (inside, use the actual guest IP)",
             long = "forwarded-guest-ip"

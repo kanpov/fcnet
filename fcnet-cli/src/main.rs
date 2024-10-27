@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use arguments::{Cli, Subcommands};
 use clap::Parser;
 use fcnet::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
@@ -17,7 +15,6 @@ fn main() {
             veth2_name,
             veth1_ip,
             veth2_ip,
-            guest_ip,
             forwarded_guest_ip,
         } => FirecrackerNetworkType::Namespaced {
             netns_name,
@@ -25,13 +22,14 @@ fn main() {
             veth2_name,
             veth1_ip,
             veth2_ip,
-            guest_ip,
             forwarded_guest_ip,
         },
     };
 
     let network = FirecrackerNetwork {
-        iptables_path: PathBuf::from(cli.iptables_path),
+        nft_path: cli.nft_path,
+        ip_stack: cli.ip_stack.into(),
+        guest_ip: cli.guest_ip,
         iface_name: cli.iface_name,
         tap_name: cli.tap_name,
         tap_ip: cli.tap_ip,
