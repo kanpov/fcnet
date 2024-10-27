@@ -50,8 +50,11 @@ pub struct FirecrackerNetwork {
 /// The IP stack to use for networking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FirecrackerIpStack {
+    /// IPv4, translated to "ip" chains in nftables.
     V4,
+    /// IPv6, translated to "ip6" chains in nftables.
     V6,
+    /// Both IPv4 and IPv6, translated to "inet" chains in nftables.
     Dual,
 }
 
@@ -99,6 +102,7 @@ pub enum FirecrackerNetworkError {
     ForbiddenDualStackInRoute,
 }
 
+/// An object created by the Firecracker networking.
 #[derive(Debug)]
 pub enum FirecrackerNetworkObject {
     IpLink,

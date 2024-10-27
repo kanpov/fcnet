@@ -252,12 +252,13 @@ async fn setup_inner_nf_rules(
 ) -> Result<(), FirecrackerNetworkError> {
     let mut batch = Batch::new();
 
-    // create table, postrouting and prerouting chains
+    // create table, postrouting and prerouting chains (prerouting only needed when using forwarding)
     batch.add(NfListObject::Table(Table {
         family: nf_family,
         name: NFT_TABLE.to_string(),
         handle: None,
     }));
+
     batch.add(NfListObject::Chain(Chain {
         family: nf_family,
         table: NFT_TABLE.to_string(),
@@ -270,18 +271,21 @@ async fn setup_inner_nf_rules(
         dev: None,
         policy: Some(NfChainPolicy::Accept),
     }));
-    batch.add(NfListObject::Chain(Chain {
-        family: nf_family,
-        table: NFT_TABLE.to_string(),
-        name: NFT_PREROUTING_CHAIN.to_string(),
-        newname: None,
-        handle: None,
-        _type: Some(NfChainType::NAT),
-        hook: Some(NfHook::Prerouting),
-        prio: Some(-100),
-        policy: Some(NfChainPolicy::Accept),
-        dev: None,
-    }));
+
+    if let Some(_) = forwarded_guest_ip {
+        batch.add(NfListObject::Chain(Chain {
+            family: nf_family,
+            table: NFT_TABLE.to_string(),
+            name: NFT_PREROUTING_CHAIN.to_string(),
+            newname: None,
+            handle: None,
+            _type: Some(NfChainType::NAT),
+            hook: Some(NfHook::Prerouting),
+            prio: Some(-100),
+            policy: Some(NfChainPolicy::Accept),
+            dev: None,
+        }));
+    }
 
     // SNAT packets coming from the guest ip to the veth2 ip so that outer netns forwards them not from the
     // guest ip local to the inner netns, but from the known veth2 ip

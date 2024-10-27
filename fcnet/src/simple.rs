@@ -169,9 +169,9 @@ async fn check(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) 
 
     check_base_chains(network, &current_ruleset)?;
 
-    for object in &current_ruleset.objects {
+    for object in current_ruleset.objects {
         match object {
-            NfObject::ListObject(object) => match object.as_ref() {
+            NfObject::ListObject(object) => match *object {
                 NfListObject::Rule(rule) => {
                     if rule.chain == NFT_POSTROUTING_CHAIN && rule.expr == masq_expr(network) {
                         masquerade_rule_exists = true;
