@@ -12,7 +12,7 @@ use rtnetlink::IpVersion;
 
 use crate::{
     util::{check_base_chains, FirecrackerNetworkExt},
-    FirecrackerNetwork, Error, ObjectType, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
+    FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObjectType, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
     NFT_PREROUTING_CHAIN, NFT_TABLE,
 };
 
@@ -25,7 +25,7 @@ pub(super) async fn check(
     namespaced_data: NamespacedData<'_>,
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
-) -> Result<(), Error> {
+) -> Result<(), FirecrackerNetworkError> {
     check_outer_nf_rules(network, &namespaced_data).await?;
 
     let nft_path = network.nft_path.clone();
@@ -46,10 +46,10 @@ pub(super) async fn check(
 async fn check_outer_nf_rules(
     network: &FirecrackerNetwork,
     namespaced_data: &NamespacedData<'_>,
-) -> Result<(), Error> {
+) -> Result<(), FirecrackerNetworkError> {
     let current_ruleset = get_current_ruleset(network.nf_program(), None)
         .await
-        .map_err(Error::NftablesError)?;
+        .map_err(FirecrackerNetworkError::NftablesError)?;
     check_base_chains(network, &current_ruleset)?;
 
     let mut outer_masq_rule_exists = false;
@@ -77,20 +77,20 @@ async fn check_outer_nf_rules(
     }
 
     if !outer_masq_rule_exists {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfMasqueradeRule,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfMasqueradeRule,
         ));
     }
 
     if !outer_ingress_forward_rule_exists {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfIngressForwardRule,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfIngressForwardRule,
         ));
     }
 
     if !outer_egress_forward_rule_exists {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfEgressForwardRule,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfEgressForwardRule,
         ));
     }
 
@@ -100,7 +100,7 @@ async fn check_outer_nf_rules(
 async fn check_outer_forward_route(
     namespaced_data: NamespacedData<'_>,
     netlink_handle: rtnetlink::Handle,
-) -> Result<(), Error> {
+) -> Result<(), FirecrackerNetworkError> {
     if let Some(forwarded_guest_ip) = namespaced_data.forwarded_guest_ip {
         let ip_version = match forwarded_guest_ip {
             IpAddr::V4(_) => IpVersion::V4,
@@ -127,7 +127,7 @@ async fn check_outer_forward_route(
         }
 
         if route_message.is_none() {
-            return Err(Error::ObjectNotFound(ObjectType::IpRoute));
+            return Err(FirecrackerNetworkError::ObjectNotFound(FirecrackerNetworkObjectType::IpRoute));
         }
     }
 
@@ -141,10 +141,10 @@ async fn check_inner_nf_rules(
     guest_ip: IpInet,
     veth2_ip: IpInet,
     nf_family: NfFamily,
-) -> Result<(), Error> {
+) -> Result<(), FirecrackerNetworkError> {
     let current_ruleset = get_current_ruleset(nft_path.as_deref(), None)
         .await
-        .map_err(Error::NftablesError)?;
+        .map_err(FirecrackerNetworkError::NftablesError)?;
 
     let mut table_exists = false;
     let mut postrouting_chain_exists = false;
@@ -185,31 +185,31 @@ async fn check_inner_nf_rules(
     }
 
     if !table_exists {
-        return Err(Error::ObjectNotFound(ObjectType::NfTable));
+        return Err(FirecrackerNetworkError::ObjectNotFound(FirecrackerNetworkObjectType::NfTable));
     }
 
     if !postrouting_chain_exists {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfPostroutingChain,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfPostroutingChain,
         ));
     }
 
     if !snat_rule_exists {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfEgressSnatRule,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfEgressSnatRule,
         ));
     }
 
     if forwarded_guest_ip.is_some() {
         if !prerouting_chain_exists {
-            return Err(Error::ObjectNotFound(
-                ObjectType::NfPreroutingChain,
+            return Err(FirecrackerNetworkError::ObjectNotFound(
+                FirecrackerNetworkObjectType::NfPreroutingChain,
             ));
         }
 
         if !dnat_rule_exists {
-            return Err(Error::ObjectNotFound(
-                ObjectType::NfIngressDnatRule,
+            return Err(FirecrackerNetworkError::ObjectNotFound(
+                FirecrackerNetworkObjectType::NfIngressDnatRule,
             ));
         }
     }

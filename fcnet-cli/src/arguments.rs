@@ -2,11 +2,11 @@ use std::{net::IpAddr, str::FromStr};
 
 use cidr::IpInet;
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use fcnet::FirecrackerIpStack;
+use fcnet_types::FirecrackerIpStack;
 
 #[derive(Parser)]
 #[command(
-    name = "fcnet-serve-cli",
+    name = "fcnet-cli",
     version = "0.1.0",
     about = "A CLI wrapper around the fcnet library for Firecracker microVM networking",
     propagate_version = true

@@ -1,0 +1,23 @@
+[package]
+name = "fcnet-types"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types for fcnet, the Firecracker networking solution"
+license = "MIT"
+keywords = ["firecracker", "microvm", "networking"]
+categories = ["network-programming"]
+repository = "https://github.com/kanpov/fcnet"
+readme = "README.md"
+
+[dependencies]
+cidr = "0.3.0"
+serde = { version = "1.0.213", features = ["derive"], optional = true }
+
+[dev-dependencies]
+fcnet-types = { path = ".", features = ["full"] }
+
+[features]
+simple = []
+namespaced = []
+serde = ["dep:serde", "cidr/serde"]
+full = ["simple", "namespaced", "serde"]

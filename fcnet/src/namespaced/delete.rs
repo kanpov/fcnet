@@ -5,7 +5,7 @@ use nftables::{
 use nftables_async::{apply_ruleset, get_current_ruleset};
 
 use crate::{
-    netns::NetNs, util::FirecrackerNetworkExt, FirecrackerNetwork, Error, ObjectType,
+    netns::NetNs, util::FirecrackerNetworkExt, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObjectType,
     NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_TABLE,
 };
 
@@ -14,15 +14,15 @@ use super::{outer_egress_forward_expr, outer_ingress_forward_expr, outer_masq_ex
 pub(super) async fn delete(
     namespaced_data: NamespacedData<'_>,
     network: &FirecrackerNetwork,
-) -> Result<(), Error> {
+) -> Result<(), FirecrackerNetworkError> {
     NetNs::get(&namespaced_data.netns_name)
-        .map_err(Error::NetnsError)?
+        .map_err(FirecrackerNetworkError::NetnsError)?
         .remove()
-        .map_err(Error::NetnsError)?;
+        .map_err(FirecrackerNetworkError::NetnsError)?;
 
     let current_ruleset = get_current_ruleset(network.nf_program(), None)
         .await
-        .map_err(Error::NftablesError)?;
+        .map_err(FirecrackerNetworkError::NftablesError)?;
 
     let mut outer_masq_rule_handle = None;
     let mut outer_ingress_forward_rule_handle = None;
@@ -49,20 +49,20 @@ pub(super) async fn delete(
     }
 
     if outer_masq_rule_handle.is_none() {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfMasqueradeRule,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfMasqueradeRule,
         ));
     }
 
     if outer_ingress_forward_rule_handle.is_none() {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfIngressForwardRule,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfIngressForwardRule,
         ));
     }
 
     if outer_egress_forward_rule_handle.is_none() {
-        return Err(Error::ObjectNotFound(
-            ObjectType::NfEgressForwardRule,
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfEgressForwardRule,
         ));
     }
 
@@ -97,5 +97,5 @@ pub(super) async fn delete(
 
     apply_ruleset(&batch.to_nftables(), network.nf_program(), None)
         .await
-        .map_err(Error::NftablesError)
+        .map_err(FirecrackerNetworkError::NftablesError)
 }

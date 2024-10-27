@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 
-use fcnet::{FirecrackerIpStack, FirecrackerNetwork};
+use fcnet_types::{FirecrackerIpStack, FirecrackerNetwork};
 use futures_util::TryStreamExt;
 use nftables::{
     batch::Batch,
@@ -8,9 +8,9 @@ use nftables::{
     types::{NfChainPolicy, NfChainType, NfFamily, NfHook},
 };
 
-use crate::{Error, ObjectType, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_TABLE};
+use crate::{FirecrackerNetworkError, FirecrackerNetworkObjectType, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_TABLE};
 
-pub async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Result<u32, Error> {
+pub async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Result<u32, FirecrackerNetworkError> {
     Ok(netlink_handle
         .link()
         .get()
@@ -18,8 +18,8 @@ pub async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) ->
         .execute()
         .try_next()
         .await
-        .map_err(Error::NetlinkOperationError)?
-        .ok_or(Error::ObjectNotFound(ObjectType::IpLink))?
+        .map_err(FirecrackerNetworkError::NetlinkOperationError)?
+        .ok_or(FirecrackerNetworkError::ObjectNotFound(FirecrackerNetworkObjectType::IpLink))?
         .header
         .index)
 }
@@ -28,7 +28,7 @@ pub fn add_base_chains_if_needed(
     network: &FirecrackerNetwork,
     current_ruleset: &Nftables,
     batch: &mut Batch,
-) -> Result<(), Error> {
+) -> Result<(), FirecrackerNetworkError> {
     let mut table_exists = false;
     let mut postrouting_chain_exists = false;
     let mut filter_chain_exists = false;
@@ -93,7 +93,7 @@ pub fn add_base_chains_if_needed(
     Ok(())
 }
 
-pub fn check_base_chains(network: &FirecrackerNetwork, current_ruleset: &Nftables) -> Result<(), Error> {
+pub fn check_base_chains(network: &FirecrackerNetwork, current_ruleset: &Nftables) -> Result<(), FirecrackerNetworkError> {
     let mut table_exists = false;
     let mut postrouting_chain_exists = false;
     let mut filter_chain_exists = false;
@@ -118,15 +118,19 @@ pub fn check_base_chains(network: &FirecrackerNetwork, current_ruleset: &Nftable
     }
 
     if !table_exists {
-        return Err(Error::ObjectNotFound(ObjectType::NfTable));
+        return Err(FirecrackerNetworkError::ObjectNotFound(FirecrackerNetworkObjectType::NfTable));
     }
 
     if !postrouting_chain_exists {
-        return Err(Error::ObjectNotFound(ObjectType::NfPostroutingChain));
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfPostroutingChain,
+        ));
     }
 
     if !filter_chain_exists {
-        return Err(Error::ObjectNotFound(ObjectType::NfFilterChain));
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObjectType::NfFilterChain,
+        ));
     }
 
     Ok(())

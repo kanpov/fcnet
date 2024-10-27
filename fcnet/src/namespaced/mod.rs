@@ -7,7 +7,9 @@ use nftables::{
     types::NfFamily,
 };
 
-use crate::{util::nat_proto_from_addr, Error, FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
+use crate::{
+    util::nat_proto_from_addr, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation, FirecrackerNetworkType,
+};
 use std::future::Future;
 
 mod add;
@@ -30,7 +32,7 @@ pub async fn run(
     operation: FirecrackerNetworkOperation,
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
-) -> Result<(), Error> {
+) -> Result<(), FirecrackerNetworkError> {
     let namespaced_data = match network.network_type {
         #[cfg(feature = "simple")]
         FirecrackerNetworkType::Simple => unreachable!(),
@@ -61,21 +63,21 @@ pub async fn run(
 #[cfg(feature = "namespaced")]
 async fn use_netns_in_thread(
     netns_name: String,
-    future: impl 'static + Send + Future<Output = Result<(), Error>>,
-) -> Result<(), Error> {
+    future: impl 'static + Send + Future<Output = Result<(), FirecrackerNetworkError>>,
+) -> Result<(), FirecrackerNetworkError> {
     use crate::netns::NetNs;
 
-    let netns = NetNs::get(netns_name).map_err(Error::NetnsError)?;
+    let netns = NetNs::get(netns_name).map_err(FirecrackerNetworkError::NetnsError)?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
 
     std::thread::spawn(move || {
         let result = {
             match tokio::runtime::Builder::new_current_thread().enable_all().build() {
                 Ok(runtime) => runtime.block_on(async move {
-                    netns.enter().map_err(Error::NetnsError)?;
+                    netns.enter().map_err(FirecrackerNetworkError::NetnsError)?;
                     future.await
                 }),
-                Err(err) => Err(Error::IoError(err)),
+                Err(err) => Err(FirecrackerNetworkError::IoError(err)),
             }
         };
 
@@ -84,7 +86,7 @@ async fn use_netns_in_thread(
 
     match receiver.await {
         Ok(result) => result,
-        Err(err) => Err(Error::ChannelRecvError(err)),
+        Err(err) => Err(FirecrackerNetworkError::ChannelRecvError(err)),
     }
 }
 

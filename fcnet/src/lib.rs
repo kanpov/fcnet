@@ -1,87 +1,84 @@
 #[cfg(all(not(feature = "simple"), not(feature = "namespaced")))]
 compile_error!("Either \"simple\" or \"namespaced\" networking feature flags must be enabled");
 
-use std::net::IpAddr;
+use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
+use nftables::helper::NftablesError;
 
-use cidr::IpInet;
+#[cfg(feature = "namespaced")]
+mod namespaced;
+#[cfg(feature = "namespaced")]
+mod netns;
+#[cfg(feature = "namespaced")]
+pub use netns::NetNsError;
+#[cfg(feature = "simple")]
+mod simple;
 
-/// A configuration for a Firecracker microVM network.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct FirecrackerNetwork {
-    /// The optional explicit path to "nft" to use when invoking it.
-    pub nft_path: Option<String>,
-    /// The IP stack to use.
-    pub ip_stack: FirecrackerIpStack,
-    /// The name of the host network interface that handles real connectivity (i.e. via Ethernet or Wi-Fi).
-    pub iface_name: String,
-    /// The name of the tap device to direct Firecracker to use.
-    pub tap_name: String,
-    /// The IP of the tap device to direct Firecracker to use.
-    pub tap_ip: IpInet,
-    /// The IP of the guest.
-    pub guest_ip: IpInet,
-    /// The type of network to create, the available options depend on the feature flags enabled.
-    pub network_type: FirecrackerNetworkType,
-}
+pub(crate) mod util;
 
-/// The IP stack to use for networking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum FirecrackerIpStack {
-    /// IPv4, translated to "ip" chains in nftables.
-    V4,
-    /// IPv6, translated to "ip6" chains in nftables.
-    V6,
-    /// Both IPv4 and IPv6, translated to "inet" chains in nftables.
-    Dual,
-}
+const NFT_TABLE: &str = "fcnet";
+const NFT_POSTROUTING_CHAIN: &str = "postrouting";
+#[cfg(feature = "namespaced")]
+const NFT_PREROUTING_CHAIN: &str = "prerouting";
+const NFT_FILTER_CHAIN: &str = "filter";
 
-/// The type of Firecracker network to work with.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "type"))]
-pub enum FirecrackerNetworkType {
-    /// A "simple" network configuration, with a tap device bound to the host interface via 1 set of forwarding rules.
-    /// The most optimal and performant choice for the majority of use-cases.
-    #[cfg(feature = "simple")]
-    Simple,
-    /// A namespaced network configuration, with the tap device residing in a separate network namespace and being
-    /// bound to the host interface via 2 sets of forwarding rules.
-    /// The better choice exclusively for multiple running microVM sharing the same snapshot data (i.e. so-called "clones").
+/// An error that can be emitted by embedded fcnet.
+#[derive(Debug, thiserror::Error)]
+pub enum FirecrackerNetworkError {
+    #[error("An rtnetlink operation failed: {0}")]
+    NetlinkOperationError(rtnetlink::Error),
+    #[error("Creating or deleting a tap device failed: {0}")]
+    TapDeviceError(tokio_tun::Error),
     #[cfg(feature = "namespaced")]
-    Namespaced {
-        netns_name: String,
-        veth1_name: String,
-        veth2_name: String,
-        veth1_ip: IpInet,
-        veth2_ip: IpInet,
-        forwarded_guest_ip: Option<IpAddr>,
-    },
+    #[error("Interacting with a network namespace failed: {0}")]
+    NetnsError(NetNsError),
+    #[error("A generic I/O error occurred: {0}")]
+    IoError(std::io::Error),
+    #[cfg(feature = "namespaced")]
+    #[error("Receiving from a supporting oneshot channel failed: {0}")]
+    ChannelRecvError(tokio::sync::oneshot::error::RecvError),
+    #[error("Invoking nftables failed: {0}")]
+    NftablesError(NftablesError),
+    #[error("An nftables object was not found in the current ruleset")]
+    ObjectNotFound(FirecrackerNetworkObjectType),
+    #[error("In a netlink route, both an IPv4 and an IPv6 address are being used (address, gateway)")]
+    ForbiddenDualStackInRoute,
 }
 
-impl FirecrackerNetwork {
-    /// Format a kernel boot argument that can be added so that all routing setup in the guest is performed
-    /// by the kernel automatically with iproute2 not needed in the guest.
-    pub fn guest_ip_boot_arg(&self, guest_iface_name: impl AsRef<str>) -> String {
-        format!(
-            "ip={}::{}:{}::{}:off",
-            self.guest_ip.address().to_string(),
-            self.tap_ip.address().to_string(),
-            self.guest_ip.mask().to_string(),
-            guest_iface_name.as_ref()
-        )
+/// An object created by the integrated Firecracker networking backend.
+#[derive(Debug)]
+pub enum FirecrackerNetworkObjectType {
+    IpLink,
+    IpRoute,
+    NfTable,
+    NfPostroutingChain,
+    #[cfg(feature = "namespaced")]
+    NfPreroutingChain,
+    NfFilterChain,
+    NfMasqueradeRule,
+    NfEgressForwardRule,
+    NfIngressForwardRule,
+    #[cfg(feature = "namespaced")]
+    NfEgressSnatRule,
+    #[cfg(feature = "namespaced")]
+    NfIngressDnatRule,
+}
+
+/// Run an operation on a [FirecrackerNetwork] via the integrated backend.
+pub async fn run(network: &FirecrackerNetwork, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
+    let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
+    tokio::task::spawn(connection);
+
+    match &network.network_type {
+        #[cfg(feature = "simple")]
+        FirecrackerNetworkType::Simple => simple::run(network, netlink_handle, operation).await,
+        #[cfg(feature = "namespaced")]
+        FirecrackerNetworkType::Namespaced {
+            netns_name: _,
+            veth1_name: _,
+            veth2_name: _,
+            veth1_ip: _,
+            veth2_ip: _,
+            forwarded_guest_ip: _,
+        } => namespaced::run(operation, network, netlink_handle).await,
     }
-}
-
-/// An operation that can be made with a FirecrackerNetwork.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum FirecrackerNetworkOperation {
-    /// Add this network to the host.
-    Add,
-    /// Check that this network already exists on the host.
-    Check,
-    /// Delete this network from the host.
-    Delete,
 }

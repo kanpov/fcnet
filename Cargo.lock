@@ -184,27 +184,7 @@ version = "0.6.0"
 dependencies = [
  "cidr",
  "fcnet",
- "serde",
-]
-
-[[package]]
-name = "fcnet-serve-cli"
-version = "0.1.0"
-dependencies = [
- "cidr",
- "clap",
- "fcnet",
- "fcnet-use-integrated",
- "tokio",
-]
-
-[[package]]
-name = "fcnet-use-integrated"
-version = "0.1.0"
-dependencies = [
- "cidr",
- "fcnet",
- "fcnet-use-integrated",
+ "fcnet-types",
  "futures-util",
  "netlink-packet-route",
  "nftables",
@@ -215,6 +195,26 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-tun",
+]
+
+[[package]]
+name = "fcnet-cli"
+version = "0.3.0"
+dependencies = [
+ "cidr",
+ "clap",
+ "fcnet",
+ "fcnet-types",
+ "tokio",
+]
+
+[[package]]
+name = "fcnet-types"
+version = "0.1.0"
+dependencies = [
+ "cidr",
+ "fcnet-types",
+ "serde",
 ]
 
 [[package]]
