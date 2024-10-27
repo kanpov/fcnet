@@ -1,7 +1,8 @@
 use std::{net::IpAddr, str::FromStr};
 
 use cidr::IpInet;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use fcnet::FirecrackerIpStack;
 
 #[derive(Parser)]
 #[command(
@@ -13,8 +14,8 @@ use clap::{Args, Parser, Subcommand};
 pub struct Cli {
     #[arg(help = "Optional explicit path to the \"nft\" binary", long = "nft-path")]
     pub nft_path: Option<String>,
-    #[arg(help = "Whether to use IPv6 support", long = "ipv6")]
-    pub ipv6: bool,
+    #[arg(help = "Which IP stack to use", long = "ip-stack", default_value_t)]
+    pub ip_stack: IpStackWrapper,
     #[arg(
         help = "Network interface in the default netns that handles real connectivity",
         long = "iface",
@@ -29,6 +30,35 @@ pub struct Cli {
     pub operation_group: OperationGroup,
     #[command(subcommand)]
     pub subcommands: Subcommands,
+}
+
+#[derive(ValueEnum, Clone, Copy, Default)]
+pub enum IpStackWrapper {
+    #[default]
+    V4,
+    V6,
+    Dual,
+}
+
+impl ToString for IpStackWrapper {
+    fn to_string(&self) -> String {
+        match self {
+            IpStackWrapper::V4 => "v4",
+            IpStackWrapper::V6 => "v6",
+            IpStackWrapper::Dual => "dual",
+        }
+        .to_string()
+    }
+}
+
+impl From<IpStackWrapper> for FirecrackerIpStack {
+    fn from(value: IpStackWrapper) -> Self {
+        match value {
+            IpStackWrapper::V4 => FirecrackerIpStack::V4,
+            IpStackWrapper::V6 => FirecrackerIpStack::V6,
+            IpStackWrapper::Dual => FirecrackerIpStack::Dual,
+        }
+    }
 }
 
 #[derive(Args)]

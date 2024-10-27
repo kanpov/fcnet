@@ -30,7 +30,7 @@ fn main() {
 
     let network = FirecrackerNetwork {
         nft_path: cli.nft_path,
-        ipv6: cli.ipv6,
+        ip_stack: cli.ip_stack.into(),
         iface_name: cli.iface_name,
         tap_name: cli.tap_name,
         tap_ip: cli.tap_ip,

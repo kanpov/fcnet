@@ -62,20 +62,21 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
         match object {
             NfObject::ListObject(object) => match *object {
                 NfListObject::Table(table) => {
-                    if table.name == NFT_NAT_TABLE {
+                    if table.name == NFT_NAT_TABLE && table.family == network.nf_family() {
                         nat_table_exists = true;
-                    } else if table.name == NFT_FILTER_TABLE {
+                    } else if table.name == NFT_FILTER_TABLE && table.family == network.nf_family() {
                         filter_table_exists = true;
                     }
                 }
                 NfListObject::Chain(chain) => {
-                    if chain.name == NFT_NAT_POSTROUTING_CHAIN {
+                    if chain.name == NFT_NAT_POSTROUTING_CHAIN && chain.table == NFT_NAT_TABLE {
                         nat_chain_exists = true;
-                    } else if chain.name == NFT_FILTER_FORWARD_CHAIN {
+                    } else if chain.name == NFT_FILTER_FORWARD_CHAIN && chain.table == NFT_FILTER_TABLE {
                         filter_chain_exists = true;
                     }
                 }
                 NfListObject::Rule(rule) => {
+                    dbg!(&rule);
                     if rule.chain == NFT_NAT_POSTROUTING_CHAIN && rule.table == NFT_NAT_TABLE && rule.expr == masquerade_expr {
                         masquerade_rule_exists = true;
                     }
@@ -87,12 +88,11 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
     }
 
     let mut batch = Batch::new();
-    // chains and tables if they don't already exist
     if !nat_table_exists {
         batch.add(NfListObject::Table(Table {
             family: network.nf_family(),
             name: NFT_NAT_TABLE.to_string(),
-            handle: Some(1),
+            handle: None,
         }));
     }
 
@@ -101,13 +101,13 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
             family: network.nf_family(),
             table: NFT_NAT_TABLE.to_string(),
             name: NFT_NAT_POSTROUTING_CHAIN.to_string(),
-            handle: Some(2),
             _type: Some(NfChainType::NAT),
             hook: Some(NfHook::Postrouting),
             prio: Some(100),
             policy: Some(NfChainPolicy::Accept),
             newname: None,
             dev: None,
+            handle: None,
         }));
     }
 
@@ -115,7 +115,7 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
         batch.add(NfListObject::Table(Table {
             family: network.nf_family(),
             name: NFT_FILTER_TABLE.to_string(),
-            handle: Some(3),
+            handle: None,
         }));
     }
 
@@ -124,46 +124,47 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
             family: network.nf_family(),
             table: NFT_FILTER_TABLE.to_string(),
             name: NFT_FILTER_FORWARD_CHAIN.to_string(),
-            handle: Some(4),
             _type: Some(NfChainType::Filter),
             hook: Some(NfHook::Forward),
             prio: Some(0),
             policy: Some(NfChainPolicy::Accept),
+            handle: None,
             newname: None,
             dev: None,
         }));
     }
 
-    // rules
+    // accept from tap to iface, created once per network
     batch.add(NfListObject::Rule(Rule {
         family: network.nf_family(),
-        table: NFT_NAT_TABLE.to_string(),
-        chain: NFT_NAT_POSTROUTING_CHAIN.to_string(),
-        handle: Some(5),
-        expr: masquerade_expr,
+        table: NFT_FILTER_TABLE.to_string(),
+        chain: NFT_FILTER_FORWARD_CHAIN.to_string(),
+        expr: vec![
+            Statement::Match(Match {
+                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Iifname })),
+                right: Expression::String(network.tap_name.clone()),
+                op: Operator::EQ,
+            }),
+            Statement::Match(Match {
+                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
+                right: Expression::String(network.iface_name.clone()),
+                op: Operator::EQ,
+            }),
+            Statement::Accept(None),
+        ],
+        handle: None,
         index: None,
         comment: None,
     }));
 
+    // masquerade from iface, created only once
     if !masquerade_rule_exists {
         batch.add(NfListObject::Rule(Rule {
             family: network.nf_family(),
-            table: NFT_FILTER_TABLE.to_string(),
-            chain: NFT_FILTER_FORWARD_CHAIN.to_string(),
-            expr: vec![
-                Statement::Match(Match {
-                    left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Iifname })),
-                    right: Expression::String(network.tap_name.clone()),
-                    op: Operator::EQ,
-                }),
-                Statement::Match(Match {
-                    left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
-                    right: Expression::String(network.iface_name.clone()),
-                    op: Operator::EQ,
-                }),
-                Statement::Accept(None),
-            ],
-            handle: Some(7),
+            table: NFT_NAT_TABLE.to_string(),
+            chain: NFT_NAT_POSTROUTING_CHAIN.to_string(),
+            expr: masquerade_expr,
+            handle: None,
             index: None,
             comment: None,
         }));

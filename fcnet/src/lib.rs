@@ -29,8 +29,8 @@ const NFT_FILTER_FORWARD_CHAIN: &str = "forward";
 pub struct FirecrackerNetwork {
     /// The optional explicit path to "nft" to use when invoking it.
     pub nft_path: Option<String>,
-    /// Whether to use IPv6.
-    pub ipv6: bool,
+    /// The IP stack to use.
+    pub ip_stack: FirecrackerIpStack,
     /// The name of the host network interface that handles real connectivity (i.e. via Ethernet or Wi-Fi).
     pub iface_name: String,
     /// The name of the tap device to direct Firecracker to use.
@@ -39,6 +39,14 @@ pub struct FirecrackerNetwork {
     pub tap_ip: IpInet,
     /// The type of network to create, the available options depend on the feature flags enabled.
     pub network_type: FirecrackerNetworkType,
+}
+
+/// The IP stack to use for networking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FirecrackerIpStack {
+    V4,
+    V6,
+    Dual,
 }
 
 /// The type of Firecracker network to work with.
@@ -101,9 +109,10 @@ pub enum FirecrackerNetworkOperation {
 
 impl FirecrackerNetwork {
     fn nf_family(&self) -> NfFamily {
-        match self.ipv6 {
-            true => NfFamily::IP6,
-            false => NfFamily::IP,
+        match self.ip_stack {
+            FirecrackerIpStack::V4 => NfFamily::IP,
+            FirecrackerIpStack::V6 => NfFamily::IP6,
+            FirecrackerIpStack::Dual => NfFamily::INet,
         }
     }
 
