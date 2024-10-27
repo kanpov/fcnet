@@ -1,0 +1,26 @@
+[package]
+name = "fcnetd-client"
+version = "0.1.0"
+edition = "2021"
+description = "A daemon-based Firecracker microVM networking backend based on fcnet-types."
+license = "MIT"
+keywords = ["firecracker", "microvm", "networking"]
+categories = ["network-programming"]
+repository = "https://github.com/kanpov/fcnet"
+readme = "README.md"
+
+[dependencies]
+fcnet-types = { path = "../fcnet-types", version = "0.1.0", features = [
+    "full",
+] }
+serde = { version = "1.0.213", features = ["derive"] }
+serde_json = "1.0.132"
+thiserror = "1.0.65"
+
+tokio = { version = "1.41.0", default-features = false, features = [
+    "net",
+    "io-util",
+    "rt",
+    "macros",
+] }
+cidr = "0.3.0"

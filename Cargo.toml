@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["fcnet-types", "fcnet", "fcnet-cli", "fcnetd"]
+members = ["fcnet-types", "fcnet", "fcnet-cli", "fcnetd", "fcnetd-client"]
 
 [profile.dev]
 debug = false

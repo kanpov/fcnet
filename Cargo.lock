@@ -233,6 +233,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fcnetd-client"
+version = "0.1.0"
+dependencies = [
+ "cidr",
+ "fcnet-types",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"

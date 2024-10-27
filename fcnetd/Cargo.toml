@@ -2,7 +2,7 @@
 name = "fcnetd"
 version = "0.1.0"
 edition = "2021"
-description = "A daemon process that receives rootless connections to perform rootful Firecracker microVM networking."
+description = "A daemon process that receives rootless connections from fcnetd-client to perform rootful Firecracker microVM networking."
 license = "MIT"
 keywords = ["firecracker", "microvm", "networking"]
 categories = ["network-programming"]
