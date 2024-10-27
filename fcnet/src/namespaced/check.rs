@@ -4,9 +4,9 @@ use futures_util::TryStreamExt;
 use netlink_packet_route::route::{RouteAddress, RouteAttribute};
 use rtnetlink::IpVersion;
 
-use crate::{use_netns_in_thread, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObject};
+use crate::{FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObject};
 
-use super::NamespacedData;
+use super::{use_netns_in_thread, NamespacedData};
 
 pub(super) async fn check(
     namespaced_data: NamespacedData<'_>,
@@ -43,7 +43,7 @@ pub(super) async fn check(
         let forwarded_guest_ip = *namespaced_data.forwarded_guest_ip;
         let veth2_name = namespaced_data.veth2_name.to_string();
         let veth2_ip = *namespaced_data.veth2_ip;
-        let guest_ip = *namespaced_data.guest_ip;
+        let guest_ip = network.guest_ip;
         use_netns_in_thread(namespaced_data.netns_name.to_string(), async move {
             // run_iptables(
             //     &iptables_path,

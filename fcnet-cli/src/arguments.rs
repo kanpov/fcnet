@@ -16,6 +16,8 @@ pub struct Cli {
     pub nft_path: Option<String>,
     #[arg(help = "Which IP stack to use", long = "ip-stack", default_value_t)]
     pub ip_stack: IpStackWrapper,
+    #[arg(help = "The CIDR IP of the guest", long = "guest-ip", default_value_t = IpInet::from_str("172.16.0.2/24").unwrap())]
+    pub guest_ip: IpInet,
     #[arg(
         help = "Network interface in the default netns that handles real connectivity",
         long = "iface",
@@ -96,12 +98,6 @@ pub enum Subcommands {
             default_value_t = IpInet::from_str("10.0.0.2/24").unwrap()
         )]
         veth2_ip: IpInet,
-        #[arg(
-            help = "The IP of the guest (not the tap device)",
-            long = "guest-ip",
-            default_value_t = IpAddr::from_str("172.16.0.2").unwrap()
-        )]
-        guest_ip: IpAddr,
         #[arg(
             help = "Optionally, an IP for forwarding connections to the guest from outside the netns (inside, use the actual guest IP)",
             long = "forwarded-guest-ip"

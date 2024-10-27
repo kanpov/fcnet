@@ -1,19 +1,23 @@
 #[cfg(all(not(feature = "simple"), not(feature = "namespaced")))]
 compile_error!("Either \"simple\" or \"namespaced\" networking feature flags must be enabled");
 
-use std::process::ExitStatus;
 #[cfg(feature = "namespaced")]
-use std::{future::Future, net::IpAddr};
+use std::net::IpAddr;
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
-use nftables::{helper::NftablesError, types::NfFamily};
+use nftables::{
+    batch::Batch,
+    helper::NftablesError,
+    schema::{Chain, NfListObject, NfObject, Nftables, Table},
+    stmt::NATFamily,
+    types::{NfChainPolicy, NfChainType, NfFamily, NfHook},
+};
 
 #[cfg(feature = "namespaced")]
 mod namespaced;
 #[cfg(feature = "namespaced")]
 mod netns;
-mod shared;
 #[cfg(feature = "namespaced")]
 pub use netns::NetNsError;
 #[cfg(feature = "simple")]
@@ -36,6 +40,8 @@ pub struct FirecrackerNetwork {
     pub tap_name: String,
     /// The IP of the tap device to direct Firecracker to use.
     pub tap_ip: IpInet,
+    /// The IP of the guest.
+    pub guest_ip: IpInet,
     /// The type of network to create, the available options depend on the feature flags enabled.
     pub network_type: FirecrackerNetworkType,
 }
@@ -65,7 +71,6 @@ pub enum FirecrackerNetworkType {
         veth2_name: String,
         veth1_ip: IpInet,
         veth2_ip: IpInet,
-        guest_ip: IpAddr,
         forwarded_guest_ip: Option<IpAddr>,
     },
 }
@@ -145,7 +150,6 @@ impl FirecrackerNetwork {
                 veth2_name: _,
                 veth1_ip: _,
                 veth2_ip: _,
-                guest_ip: _,
                 forwarded_guest_ip: _,
             } => namespaced::run(operation, self, netlink_handle).await,
         }
@@ -153,12 +157,12 @@ impl FirecrackerNetwork {
 
     /// Format a kernel boot argument that can be added so that all routing setup in the guest is performed
     /// by the kernel automatically with iproute2 not needed in the guest.
-    pub fn guest_ip_boot_arg(&self, guest_ip: &IpInet, guest_iface_name: impl AsRef<str>) -> String {
+    pub fn guest_ip_boot_arg(&self, guest_iface_name: impl AsRef<str>) -> String {
         format!(
             "ip={}::{}:{}::{}:off",
-            guest_ip.address().to_string(),
+            self.guest_ip.address().to_string(),
             self.tap_ip.address().to_string(),
-            guest_ip.mask().to_string(),
+            self.guest_ip.mask().to_string(),
             guest_iface_name.as_ref()
         )
     }
@@ -178,32 +182,121 @@ async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Res
         .index)
 }
 
-#[cfg(feature = "namespaced")]
-async fn use_netns_in_thread(
-    netns_name: String,
-    future: impl 'static + Send + Future<Output = Result<(), FirecrackerNetworkError>>,
+fn add_base_chains_if_needed(
+    network: &FirecrackerNetwork,
+    current_ruleset: &Nftables,
+    batch: &mut Batch,
 ) -> Result<(), FirecrackerNetworkError> {
-    use netns::NetNs;
+    let mut table_exists = false;
+    let mut postrouting_chain_exists = false;
+    let mut filter_chain_exists = false;
 
-    let netns = NetNs::get(netns_name).map_err(FirecrackerNetworkError::NetnsError)?;
-    let (sender, receiver) = tokio::sync::oneshot::channel();
+    for object in &current_ruleset.objects {
+        match object {
+            NfObject::ListObject(object) => match object.as_ref() {
+                NfListObject::Table(table) if table.name == NFT_TABLE && table.family == network.nf_family() => {
+                    table_exists = true;
+                }
+                NfListObject::Chain(chain) => {
+                    if chain.name == NFT_POSTROUTING_CHAIN && chain.table == NFT_TABLE {
+                        postrouting_chain_exists = true;
+                    } else if chain.name == NFT_FILTER_CHAIN && chain.table == NFT_TABLE {
+                        filter_chain_exists = true;
+                    }
+                }
+                _ => continue,
+            },
+            _ => continue,
+        }
+    }
 
-    std::thread::spawn(move || {
-        let result = {
-            match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-                Ok(runtime) => runtime.block_on(async move {
-                    netns.enter().map_err(FirecrackerNetworkError::NetnsError)?;
-                    future.await
-                }),
-                Err(err) => Err(FirecrackerNetworkError::IoError(err)),
-            }
-        };
+    if !table_exists {
+        batch.add(NfListObject::Table(Table {
+            family: network.nf_family(),
+            name: NFT_TABLE.to_string(),
+            handle: None,
+        }));
+    }
 
-        let _ = sender.send(result);
-    });
+    if !postrouting_chain_exists {
+        batch.add(NfListObject::Chain(Chain {
+            family: network.nf_family(),
+            table: NFT_TABLE.to_string(),
+            name: NFT_POSTROUTING_CHAIN.to_string(),
+            _type: Some(NfChainType::NAT),
+            hook: Some(NfHook::Postrouting),
+            prio: Some(100),
+            policy: Some(NfChainPolicy::Accept),
+            newname: None,
+            dev: None,
+            handle: None,
+        }));
+    }
 
-    match receiver.await {
-        Ok(result) => result,
-        Err(err) => Err(FirecrackerNetworkError::ChannelRecvError(err)),
+    if !filter_chain_exists {
+        batch.add(NfListObject::Chain(Chain {
+            family: network.nf_family(),
+            table: NFT_TABLE.to_string(),
+            name: NFT_FILTER_CHAIN.to_string(),
+            _type: Some(NfChainType::Filter),
+            hook: Some(NfHook::Forward),
+            prio: Some(0),
+            policy: Some(NfChainPolicy::Accept),
+            handle: None,
+            newname: None,
+            dev: None,
+        }));
+    }
+
+    Ok(())
+}
+
+fn check_base_chains(network: &FirecrackerNetwork, current_ruleset: &Nftables) -> Result<(), FirecrackerNetworkError> {
+    let mut table_exists = false;
+    let mut postrouting_chain_exists = false;
+    let mut filter_chain_exists = false;
+
+    for object in &current_ruleset.objects {
+        match object {
+            NfObject::ListObject(object) => match object.as_ref() {
+                NfListObject::Table(table) if table.name == NFT_TABLE && table.family == network.nf_family() => {
+                    table_exists = true;
+                }
+                NfListObject::Chain(chain) if chain.table == NFT_TABLE => {
+                    if chain.name == NFT_POSTROUTING_CHAIN {
+                        postrouting_chain_exists = true;
+                    } else if chain.name == NFT_FILTER_CHAIN {
+                        filter_chain_exists = true;
+                    }
+                }
+                _ => continue,
+            },
+            _ => continue,
+        }
+    }
+
+    if !table_exists {
+        return Err(FirecrackerNetworkError::ObjectNotFound(FirecrackerNetworkObject::NfTable));
+    }
+
+    if !postrouting_chain_exists {
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObject::NfPostroutingChain,
+        ));
+    }
+
+    if !filter_chain_exists {
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObject::NfFilterChain,
+        ));
+    }
+
+    Ok(())
+}
+
+fn nat_proto_from_inet(inet: &IpInet) -> String {
+    match inet {
+        IpInet::V4(_) => "ip".to_string(),
+        IpInet::V6(_) => "ip6".to_string(),
     }
 }
