@@ -128,6 +128,9 @@ name = "cidr"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfc95a0c21d5409adc146dbbb152b5c65aaea32bc2d2f57cf12f850bffdd7ab8"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "clap"
@@ -181,6 +184,7 @@ version = "0.6.0"
 dependencies = [
  "cidr",
  "fcnet",
+ "serde",
 ]
 
 [[package]]

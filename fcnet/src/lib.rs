@@ -7,6 +7,7 @@ use cidr::IpInet;
 
 /// A configuration for a Firecracker microVM network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FirecrackerNetwork {
     /// The optional explicit path to "nft" to use when invoking it.
     pub nft_path: Option<String>,
@@ -26,6 +27,7 @@ pub struct FirecrackerNetwork {
 
 /// The IP stack to use for networking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FirecrackerIpStack {
     /// IPv4, translated to "ip" chains in nftables.
     V4,
@@ -37,6 +39,8 @@ pub enum FirecrackerIpStack {
 
 /// The type of Firecracker network to work with.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
 pub enum FirecrackerNetworkType {
     /// A "simple" network configuration, with a tap device bound to the host interface via 1 set of forwarding rules.
     /// The most optimal and performant choice for the majority of use-cases.
@@ -72,6 +76,7 @@ impl FirecrackerNetwork {
 
 /// An operation that can be made with a FirecrackerNetwork.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FirecrackerNetworkOperation {
     /// Add this network to the host.
     Add,

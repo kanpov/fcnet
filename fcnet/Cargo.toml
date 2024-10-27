@@ -11,6 +11,7 @@ readme = "README.md"
 
 [dependencies]
 cidr = "0.3.0"
+serde = { version = "1.0.213", features = ["derive"], optional = true }
 
 [dev-dependencies]
 fcnet = { path = ".", features = ["full"] }
@@ -18,4 +19,5 @@ fcnet = { path = ".", features = ["full"] }
 [features]
 simple = []
 namespaced = []
-full = ["simple", "namespaced"]
+serde = ["dep:serde", "cidr/serde"]
+full = ["simple", "namespaced", "serde"]
