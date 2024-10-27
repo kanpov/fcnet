@@ -198,12 +198,6 @@ async fn check(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) 
 #[inline]
 fn masq_expr(network: &FirecrackerNetwork) -> Vec<Statement> {
     vec![
-        // Statement::SNAT(Some(NAT {
-        //     family: Some(nat_family_from_inet(&network.guest_ip)),
-        //     addr: Some(Expression::String(network.guest_ip.address().to_string())),
-        //     port: None,
-        //     flags: None,
-        // })),
         Statement::Match(Match {
             left: Expression::Named(NamedExpression::Payload(Payload::PayloadField(PayloadField {
                 protocol: nat_proto_from_inet(&network.guest_ip),
