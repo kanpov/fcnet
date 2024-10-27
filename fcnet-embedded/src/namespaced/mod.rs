@@ -8,7 +8,7 @@ use nftables::{
 };
 
 use crate::{
-    nat_proto_from_addr, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation, FirecrackerNetworkType,
+    util::nat_proto_from_addr, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation, FirecrackerNetworkType,
 };
 use std::future::Future;
 

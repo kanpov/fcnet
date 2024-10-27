@@ -1,3 +1,4 @@
+use fcnet_core::FirecrackerNetwork;
 use nftables::{
     batch::Batch,
     expr::{Expression, Meta, MetaKey, NamedExpression, Payload, PayloadField},
@@ -8,7 +9,7 @@ use nftables_async::{apply_ruleset, get_current_ruleset};
 use tokio_tun::TunBuilder;
 
 use crate::{
-    add_base_chains_if_needed, check_base_chains, get_link_index, nat_proto_from_addr, FirecrackerNetwork,
+    util::{add_base_chains_if_needed, check_base_chains, get_link_index, nat_proto_from_addr, FirecrackerNetworkExt},
     FirecrackerNetworkError, FirecrackerNetworkObject, FirecrackerNetworkOperation, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
     NFT_TABLE,
 };
@@ -33,7 +34,7 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
         .up()
         .try_build()
         .map_err(FirecrackerNetworkError::TapDeviceError)?;
-    let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await?;
+    let tap_idx = crate::util::get_link_index(network.tap_name.clone(), &netlink_handle).await?;
     netlink_handle
         .address()
         .add(tap_idx, network.tap_ip.address(), network.tap_ip.network_length())

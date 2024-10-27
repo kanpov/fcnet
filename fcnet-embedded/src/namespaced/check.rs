@@ -11,8 +11,9 @@ use nftables_async::get_current_ruleset;
 use rtnetlink::IpVersion;
 
 use crate::{
-    check_base_chains, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObject, NFT_FILTER_CHAIN,
-    NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN, NFT_TABLE,
+    util::{check_base_chains, FirecrackerNetworkExt},
+    FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObject, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
+    NFT_PREROUTING_CHAIN, NFT_TABLE,
 };
 
 use super::{

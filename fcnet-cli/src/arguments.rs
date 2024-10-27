@@ -2,7 +2,7 @@ use std::{net::IpAddr, str::FromStr};
 
 use cidr::IpInet;
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use fcnet::FirecrackerIpStack;
+use fcnet_core::FirecrackerIpStack;
 
 #[derive(Parser)]
 #[command(

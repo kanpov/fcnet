@@ -10,8 +10,9 @@ use nftables_async::{apply_ruleset, get_current_ruleset};
 use tokio_tun::TunBuilder;
 
 use crate::{
-    add_base_chains_if_needed, get_link_index, netns::NetNs, FirecrackerNetwork, FirecrackerNetworkError, NFT_FILTER_CHAIN,
-    NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN, NFT_TABLE,
+    netns::NetNs,
+    util::{add_base_chains_if_needed, get_link_index, FirecrackerNetworkExt},
+    FirecrackerNetwork, FirecrackerNetworkError, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN, NFT_TABLE,
 };
 
 use super::{

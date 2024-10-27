@@ -5,8 +5,8 @@ use nftables::{
 use nftables_async::{apply_ruleset, get_current_ruleset};
 
 use crate::{
-    netns::NetNs, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObject, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
-    NFT_TABLE,
+    netns::NetNs, util::FirecrackerNetworkExt, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObject,
+    NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_TABLE,
 };
 
 use super::{outer_egress_forward_expr, outer_ingress_forward_expr, outer_masq_expr, NamespacedData};
