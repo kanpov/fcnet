@@ -2,7 +2,7 @@
 name = "fcnet-cli"
 version = "0.3.0"
 edition = "2021"
-description = "A CLI wrapper for fcnet."
+description = "A Firecracker microVM networking solution: CLI wrapper."
 license = "MIT"
 keywords = ["firecracker", "microvm", "networking"]
 categories = ["network-programming"]
@@ -12,6 +12,6 @@ readme = "README.md"
 [dependencies]
 cidr = "0.3.0"
 clap = { version = "4.5.20", features = ["derive"] }
-fcnet-types = { path = "../fcnet-types" }
+fcnet-types = { path = "../fcnet-types", version = "0.1.0" }
 fcnet = { path = "../fcnet", version = "0.6.0", features = ["full"] }
 tokio = { version = "1.40.0", features = ["rt", "macros"] }

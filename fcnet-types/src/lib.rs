@@ -10,8 +10,10 @@ use cidr::IpInet;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FirecrackerNetwork {
     /// The optional explicit path to "nft" to use when invoking it.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub nft_path: Option<String>,
     /// The IP stack to use.
+    #[cfg_attr(feature = "serde", serde(default))]
     pub ip_stack: FirecrackerIpStack,
     /// The name of the host network interface that handles real connectivity (i.e. via Ethernet or Wi-Fi).
     pub iface_name: String,
@@ -26,10 +28,11 @@ pub struct FirecrackerNetwork {
 }
 
 /// The IP stack to use for networking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FirecrackerIpStack {
     /// IPv4, translated to "ip" chains in nftables.
+    #[default]
     V4,
     /// IPv6, translated to "ip6" chains in nftables.
     V6,

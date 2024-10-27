@@ -1,11 +1,16 @@
-## fcnet
+## fcnet-types
 
-The `fcnet` crate provides core types to perform Firecracker networking within your application. In order to actually apply `fcnet` operations, you'll need an implementation of `fcnet` in a separate crate.
+The `fcnet-types` crate provides a stable set of configuration types for a Firecracker microVM network:
 
-These implementations currently include:
-- `fcnet-use-integrated`, which links the full networking code into your application process and allows you to run it without any indirection. This, however, requires your entire application process to
-have `root` privileges, which is often undesirable, so in that case one should look into a different implementation.
-- `fcnet-use-cli`, which spawns an auxiliary `fcnet-serve-cli` process separately, this process is escalated to `root` and performs the needed operation while your application, without `root`, waits for
-it to complete execution and picks up the result.
-- `fcnet-use-daemon`, which connects to a previously started `fcnet-serve-daemon` process (that runs as `root`) over a Unix or TCP/IP socket and issues the operation over that transport and receives
-the result.
+- `FirecrackerNetwork`
+- `FirecrackerNetworkType`
+- `FirecrackerIpStack` (IPv4, IPv6, dual-stack)
+- `FirecrackerNetworkOperation` (add, delete, check)
+
+In order to actually perform `FirecrackerNetworkOperation`s over a `FirecrackerNetwork`, you'll need a concrete
+implementation that depends on `fcnet-types`:
+
+- `fcnet` is a lib-crate that is a full implementation and is linked into your binary and functions within your
+application process at the **downside of your application needing root permissions**.
+- `fcnetd-client` is a lib-crate connects to a rootful process running the `fcnetd` bin-crate, which is a daemon
+that wraps `fcnet` behind either a Unix or TCP/IP socket that can be connected to in order to perform requests.
