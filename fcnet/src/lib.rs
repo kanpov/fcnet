@@ -13,6 +13,7 @@ use nftables::{helper::NftablesError, types::NfFamily};
 mod namespaced;
 #[cfg(feature = "namespaced")]
 mod netns;
+mod shared;
 #[cfg(feature = "namespaced")]
 pub use netns::NetNsError;
 #[cfg(feature = "simple")]
@@ -84,12 +85,12 @@ pub enum FirecrackerNetworkError {
     #[cfg(feature = "namespaced")]
     #[error("Receiving from a supporting oneshot channel failed: `{0}`")]
     ChannelRecvError(tokio::sync::oneshot::error::RecvError),
-    #[error("Invoking a process failed due to its non-zero exit status: `{0}`")]
-    FailedInvocation(ExitStatus),
     #[error("Invoking nftables failed: `{0}`")]
     NftablesError(NftablesError),
     #[error("An nftables object was not found in the current ruleset")]
     ObjectNotFound(FirecrackerNetworkObject),
+    #[error("In a netlink route, both an IPv4 and an IPv6 address are being used (address, gateway)")]
+    ForbiddenDualStackInRoute,
 }
 
 #[derive(Debug)]
