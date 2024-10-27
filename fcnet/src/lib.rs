@@ -19,10 +19,9 @@ pub use netns::NetNsError;
 #[cfg(feature = "simple")]
 mod simple;
 
-const NFT_NAT_TABLE: &str = "fcnet-nat";
-const NFT_NAT_POSTROUTING_CHAIN: &str = "postrouting";
-const NFT_FILTER_TABLE: &str = "fcnet-filter";
-const NFT_FILTER_FORWARD_CHAIN: &str = "forward";
+const NFT_TABLE: &str = "fcnet";
+const NFT_POSTROUTING_CHAIN: &str = "postrouting";
+const NFT_FORWARD_CHAIN: &str = "forward";
 
 /// A configuration for a Firecracker microVM network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
