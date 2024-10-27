@@ -1,6 +1,8 @@
-use std::{path::Path, str::FromStr};
+use std::path::Path;
+#[cfg(feature = "deadpool")]
+use std::path::PathBuf;
 
-use fcnet_types::{FirecrackerIpStack, FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
+use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation};
 use serde::Serialize;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -23,6 +25,7 @@ pub enum FcnetdError {
     OperationFailed(String),
 }
 
+#[derive(Debug)]
 pub struct FcnetdConnection {
     stream: UnixStream,
 }
@@ -31,6 +34,52 @@ pub struct FcnetdConnection {
 struct Request<'net> {
     operation: FirecrackerNetworkOperation,
     network: &'net FirecrackerNetwork,
+}
+
+#[derive(Debug)]
+#[cfg(feature = "connection-pool")]
+pub struct FcnetdConnectionPool {
+    path: PathBuf,
+    password: Option<String>,
+}
+
+#[cfg(feature = "connection-pool")]
+impl FcnetdConnectionPool {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: path.into(),
+            password: None,
+        }
+    }
+
+    pub fn new_with_password(path: impl Into<PathBuf>, password: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            password: Some(password.into()),
+        }
+    }
+}
+
+#[cfg(feature = "deadpool")]
+impl deadpool::managed::Manager for FcnetdConnectionPool {
+    type Type = FcnetdConnection;
+
+    type Error = std::io::Error;
+
+    async fn create(&self) -> Result<Self::Type, Self::Error> {
+        match self.password {
+            Some(ref password) => FcnetdConnection::connect_with_password(&self.path, password).await,
+            None => FcnetdConnection::connect(&self.path).await,
+        }
+    }
+
+    async fn recycle(
+        &self,
+        _obj: &mut Self::Type,
+        _metrics: &deadpool::managed::Metrics,
+    ) -> deadpool::managed::RecycleResult<Self::Error> {
+        deadpool::managed::RecycleResult::Ok(())
+    }
 }
 
 impl FcnetdConnection {
@@ -67,21 +116,4 @@ impl FcnetdConnection {
 
         Ok(())
     }
-}
-
-#[tokio::test]
-async fn t() {
-    let mut conn = FcnetdConnection::connect("/tmp/fcnetd.sock").await.unwrap();
-    let network = FirecrackerNetwork {
-        nft_path: None,
-        ip_stack: FirecrackerIpStack::V4,
-        iface_name: "wlp7s0".to_string(),
-        tap_name: "tap0".to_string(),
-        tap_ip: cidr::IpInet::from_str("172.16.0.1/24").unwrap(),
-        guest_ip: cidr::IpInet::from_str("172.16.0.2/24").unwrap(),
-        network_type: FirecrackerNetworkType::Simple,
-    };
-    conn.run(&network, FirecrackerNetworkOperation::Add).await.unwrap();
-    conn.run(&network, FirecrackerNetworkOperation::Check).await.unwrap();
-    // conn.run(&network, FirecrackerNetworkOperation::Delete).await.unwrap();
 }
