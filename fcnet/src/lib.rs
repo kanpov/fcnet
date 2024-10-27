@@ -1,14 +1,13 @@
 #[cfg(all(not(feature = "simple"), not(feature = "namespaced")))]
 compile_error!("Either \"simple\" or \"namespaced\" networking feature flags must be enabled");
 
+use std::process::ExitStatus;
 #[cfg(feature = "namespaced")]
 use std::{future::Future, net::IpAddr};
-use std::{path::PathBuf, process::ExitStatus};
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
 use nftables::{helper::NftablesError, types::NfFamily};
-use tokio::process::Command;
 
 #[cfg(feature = "namespaced")]
 mod namespaced;
@@ -21,7 +20,7 @@ mod simple;
 
 const NFT_TABLE: &str = "fcnet";
 const NFT_POSTROUTING_CHAIN: &str = "postrouting";
-const NFT_FORWARD_CHAIN: &str = "forward";
+const NFT_FILTER_CHAIN: &str = "filter";
 
 /// A configuration for a Firecracker microVM network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -89,10 +88,19 @@ pub enum FirecrackerNetworkError {
     FailedInvocation(ExitStatus),
     #[error("Invoking nftables failed: `{0}`")]
     NftablesError(NftablesError),
-    #[error("An expected IP route was not found on the host")]
-    RouteNotFound,
-    #[error("An expected IP link was not found on the host")]
-    LinkNotFound,
+    #[error("An nftables object was not found in the current ruleset")]
+    ObjectNotFound(FirecrackerNetworkObject),
+}
+
+#[derive(Debug)]
+pub enum FirecrackerNetworkObject {
+    IpLink,
+    IpRoute,
+    NfTable,
+    NfPostroutingChain,
+    NfFilterChain,
+    NfMasqueradeRule,
+    NfForwardRule,
 }
 
 /// An operation that can be made with a FirecrackerNetwork.
@@ -107,12 +115,18 @@ pub enum FirecrackerNetworkOperation {
 }
 
 impl FirecrackerNetwork {
+    #[inline]
     fn nf_family(&self) -> NfFamily {
         match self.ip_stack {
             FirecrackerIpStack::V4 => NfFamily::IP,
             FirecrackerIpStack::V6 => NfFamily::IP6,
             FirecrackerIpStack::Dual => NfFamily::INet,
         }
+    }
+
+    #[inline]
+    fn nf_program(&self) -> Option<&str> {
+        self.nft_path.as_ref().map(|p| p.as_str())
     }
 
     /// Run an operation on this network (add, check or delete).
@@ -158,7 +172,7 @@ async fn get_link_index(link: String, netlink_handle: &rtnetlink::Handle) -> Res
         .try_next()
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?
-        .ok_or(FirecrackerNetworkError::LinkNotFound)?
+        .ok_or(FirecrackerNetworkError::ObjectNotFound(FirecrackerNetworkObject::IpLink))?
         .header
         .index)
 }
@@ -191,18 +205,4 @@ async fn use_netns_in_thread(
         Ok(result) => result,
         Err(err) => Err(FirecrackerNetworkError::ChannelRecvError(err)),
     }
-}
-
-async fn run_iptables(iptables_path: &PathBuf, iptables_cmd: String) -> Result<(), FirecrackerNetworkError> {
-    let mut command = Command::new(&iptables_path);
-    for iptables_arg in iptables_cmd.split(' ') {
-        command.arg(iptables_arg);
-    }
-
-    let status = command.status().await.map_err(FirecrackerNetworkError::IoError)?;
-    if !status.success() {
-        return Err(FirecrackerNetworkError::FailedInvocation(status));
-    }
-
-    Ok(())
 }

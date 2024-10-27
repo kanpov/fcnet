@@ -7,7 +7,7 @@ use rtnetlink::IpVersion;
 use tokio_tun::TunBuilder;
 
 use crate::{
-    get_link_index, netns::NetNs, run_iptables, use_netns_in_thread, FirecrackerNetwork, FirecrackerNetworkError,
+    get_link_index, netns::NetNs, use_netns_in_thread, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObject,
     FirecrackerNetworkOperation, FirecrackerNetworkType,
 };
 
@@ -374,7 +374,7 @@ async fn check(
         }
 
         if route_message.is_none() {
-            return Err(FirecrackerNetworkError::RouteNotFound);
+            return Err(FirecrackerNetworkError::ObjectNotFound(FirecrackerNetworkObject::IpRoute));
         }
     }
 
