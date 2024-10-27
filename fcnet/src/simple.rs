@@ -8,7 +8,7 @@ use nftables_async::{apply_ruleset, get_current_ruleset};
 use tokio_tun::TunBuilder;
 
 use crate::{
-    add_base_chains_if_needed, check_base_chains, get_link_index, nat_proto_from_inet, FirecrackerNetwork,
+    add_base_chains_if_needed, check_base_chains, get_link_index, nat_proto_from_addr, FirecrackerNetwork,
     FirecrackerNetworkError, FirecrackerNetworkObject, FirecrackerNetworkOperation, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
     NFT_TABLE,
 };
@@ -200,7 +200,7 @@ fn masq_expr(network: &FirecrackerNetwork) -> Vec<Statement> {
     vec![
         Statement::Match(Match {
             left: Expression::Named(NamedExpression::Payload(Payload::PayloadField(PayloadField {
-                protocol: nat_proto_from_inet(&network.guest_ip),
+                protocol: nat_proto_from_addr(network.guest_ip.address()),
                 field: "saddr".to_string(),
             }))),
             right: Expression::String(network.guest_ip.address().to_string()),

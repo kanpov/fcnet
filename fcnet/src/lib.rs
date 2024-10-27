@@ -10,7 +10,6 @@ use nftables::{
     batch::Batch,
     helper::NftablesError,
     schema::{Chain, NfListObject, NfObject, Nftables, Table},
-    stmt::NATFamily,
     types::{NfChainPolicy, NfChainType, NfFamily, NfHook},
 };
 
@@ -25,6 +24,8 @@ mod simple;
 
 const NFT_TABLE: &str = "fcnet";
 const NFT_POSTROUTING_CHAIN: &str = "postrouting";
+#[cfg(feature = "namespaced")]
+const NFT_PREROUTING_CHAIN: &str = "prerouting";
 const NFT_FILTER_CHAIN: &str = "filter";
 
 /// A configuration for a Firecracker microVM network.
@@ -294,9 +295,9 @@ fn check_base_chains(network: &FirecrackerNetwork, current_ruleset: &Nftables) -
     Ok(())
 }
 
-fn nat_proto_from_inet(inet: &IpInet) -> String {
-    match inet {
-        IpInet::V4(_) => "ip".to_string(),
-        IpInet::V6(_) => "ip6".to_string(),
+fn nat_proto_from_addr(addr: IpAddr) -> String {
+    match addr {
+        IpAddr::V4(_) => "ip".to_string(),
+        IpAddr::V6(_) => "ip6".to_string(),
     }
 }
