@@ -184,6 +184,7 @@ dependencies = [
  "futures-util",
  "netlink-packet-route",
  "nftables",
+ "nftables-async",
  "nix 0.29.0",
  "rtnetlink",
  "serde_json",
@@ -440,6 +441,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nftables-async"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6041770939ebc822b255f1dd14540b5e88b9aa9f71aedb57ded7ebe8856bfffd"
+dependencies = [
+ "nftables",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "nix"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -671,9 +683,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.40.0"
+version = "1.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2b070231665d27ad9ec9b8df639893f46727666c6767db40317fbe920a5d998"
+checksum = "145f3413504347a2be84393cc8a7d2fb4d863b375909ea59f2158261aa258bbb"
 dependencies = [
  "backtrace",
  "bytes",

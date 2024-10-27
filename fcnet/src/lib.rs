@@ -7,7 +7,7 @@ use std::{path::PathBuf, process::ExitStatus};
 
 use cidr::IpInet;
 use futures_util::TryStreamExt;
-use nftables::types::NfFamily;
+use nftables::{helper::NftablesError, types::NfFamily};
 use tokio::process::Command;
 
 #[cfg(feature = "namespaced")]
@@ -20,9 +20,9 @@ pub use netns::NetNsError;
 mod simple;
 
 const NFT_NAT_TABLE: &str = "fcnet-nat";
-const NFT_NAT_POSTROUTING_CHAIN: &str = "POSTROUTING";
+const NFT_NAT_POSTROUTING_CHAIN: &str = "postrouting";
 const NFT_FILTER_TABLE: &str = "fcnet-filter";
-const NFT_FILTER_FORWARD_CHAIN: &str = "POSTROUTING";
+const NFT_FILTER_FORWARD_CHAIN: &str = "forward";
 
 /// A configuration for a Firecracker microVM network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -80,6 +80,8 @@ pub enum FirecrackerNetworkError {
     ChannelRecvError(tokio::sync::oneshot::error::RecvError),
     #[error("Invoking a process failed due to its non-zero exit status: `{0}`")]
     FailedInvocation(ExitStatus),
+    #[error("Invoking nftables failed: `{0}`")]
+    NftablesError(NftablesError),
     #[error("An expected IP route was not found on the host")]
     RouteNotFound,
     #[error("An expected IP link was not found on the host")]
