@@ -176,31 +176,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fd119d74b830634cea2a0f58bbd0d54540518a14397557951e79340abc28c0"
 
 [[package]]
-name = "fcnet-cli"
+name = "fcnet"
+version = "0.6.0"
+dependencies = [
+ "cidr",
+ "fcnet",
+]
+
+[[package]]
+name = "fcnet-serve-cli"
 version = "0.3.0"
 dependencies = [
  "cidr",
  "clap",
- "fcnet-core",
- "fcnet-embedded",
+ "fcnet",
+ "fcnet-use-integrated",
  "tokio",
 ]
 
 [[package]]
-name = "fcnet-core"
+name = "fcnet-use-integrated"
 version = "0.1.0"
 dependencies = [
  "cidr",
- "fcnet-core",
-]
-
-[[package]]
-name = "fcnet-embedded"
-version = "0.1.0"
-dependencies = [
- "cidr",
- "fcnet-core",
- "fcnet-embedded",
+ "fcnet",
+ "fcnet-use-integrated",
  "futures-util",
  "netlink-packet-route",
  "nftables",

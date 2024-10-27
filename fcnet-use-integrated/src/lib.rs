@@ -1,7 +1,7 @@
 #[cfg(all(not(feature = "simple"), not(feature = "namespaced")))]
 compile_error!("Either \"simple\" or \"namespaced\" networking feature flags must be enabled");
 
-use fcnet_core::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
+use fcnet::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
 use nftables::helper::NftablesError;
 
 #[cfg(feature = "namespaced")]
@@ -21,9 +21,9 @@ const NFT_POSTROUTING_CHAIN: &str = "postrouting";
 const NFT_PREROUTING_CHAIN: &str = "prerouting";
 const NFT_FILTER_CHAIN: &str = "filter";
 
-/// An error that can be emitted by the integrated Firecracker networking backend;
+/// An error that can be emitted by embedded fcnet.
 #[derive(Debug, thiserror::Error)]
-pub enum FirecrackerNetworkError {
+pub enum Error {
     #[error("An rtnetlink operation failed: `{0}`")]
     NetlinkOperationError(rtnetlink::Error),
     #[error("Creating or deleting a tap device failed: `{0}`")]
@@ -39,14 +39,14 @@ pub enum FirecrackerNetworkError {
     #[error("Invoking nftables failed: `{0}`")]
     NftablesError(NftablesError),
     #[error("An nftables object was not found in the current ruleset")]
-    ObjectNotFound(FirecrackerNetworkObject),
+    ObjectNotFound(ObjectType),
     #[error("In a netlink route, both an IPv4 and an IPv6 address are being used (address, gateway)")]
     ForbiddenDualStackInRoute,
 }
 
 /// An object created by the integrated Firecracker networking backend.
 #[derive(Debug)]
-pub enum FirecrackerNetworkObject {
+pub enum ObjectType {
     IpLink,
     IpRoute,
     NfTable,
@@ -64,8 +64,8 @@ pub enum FirecrackerNetworkObject {
 }
 
 /// Run an operation on a [FirecrackerNetwork] via the integrated backend.
-pub async fn run(network: &FirecrackerNetwork, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
-    let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
+pub async fn run(network: &FirecrackerNetwork, operation: FirecrackerNetworkOperation) -> Result<(), Error> {
+    let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(Error::IoError)?;
     tokio::task::spawn(connection);
 
     match &network.network_type {

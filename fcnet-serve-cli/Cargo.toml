@@ -1,5 +1,5 @@
 [package]
-name = "fcnet-cli"
+name = "fcnet-serve-cli"
 version = "0.3.0"
 edition = "2021"
 description = "A CLI wrapper around the fcnet library for Firecracker microVM networking"
@@ -12,8 +12,8 @@ readme = "README.md"
 [dependencies]
 cidr = "0.3.0"
 clap = { version = "4.5.20", features = ["derive"] }
-fcnet-core = { path = "../fcnet-core" }
-fcnet-embedded = { path = "../fcnet-embedded", version = "0.1.0", features = [
+fcnet = { path = "../fcnet" }
+fcnet-use-integrated = { path = "../fcnet-use-integrated", version = "0.1.0", features = [
     "full",
 ] }
 tokio = { version = "1.40.0", features = ["rt", "macros"] }
