@@ -39,7 +39,7 @@ tokio = { version = "1.40.0", default-features = false, features = [
 fcnet = { path = ".", features = ["namespaced"] }
 
 [features]
-default = []
+default = ["simple"]
 full = ["simple", "namespaced"]
 simple = ["fcnet-types/simple"]
 namespaced = ["fcnet-types/namespaced", "dep:nix", "dep:tokio"]

@@ -17,6 +17,7 @@ serde = { version = "1.0.213", features = ["derive"], optional = true }
 fcnet-types = { path = ".", features = ["full"] }
 
 [features]
+default = ["simple"]
 simple = []
 namespaced = []
 serde = ["dep:serde", "cidr/serde"]

@@ -1,6 +1,3 @@
-#[cfg(all(not(feature = "simple"), not(feature = "namespaced")))]
-compile_error!("Either \"simple\" or \"namespaced\" networking feature flags must be enabled");
-
 use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
 use nftables::helper::NftablesError;
 
