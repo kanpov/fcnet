@@ -9,6 +9,9 @@ categories = ["network-programming"]
 repository = "https://github.com/kanpov/fcnet"
 readme = "README.md"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 fcnet-types = { path = "../fcnet-types", version = "0.1.0", features = [
     "full",
