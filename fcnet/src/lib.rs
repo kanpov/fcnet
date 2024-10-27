@@ -109,12 +109,15 @@ pub enum FirecrackerNetworkObject {
     IpRoute,
     NfTable,
     NfPostroutingChain,
+    #[cfg(feature = "namespaced")]
     NfPreroutingChain,
     NfFilterChain,
     NfMasqueradeRule,
     NfEgressForwardRule,
     NfIngressForwardRule,
+    #[cfg(feature = "namespaced")]
     NfEgressSnatRule,
+    #[cfg(feature = "namespaced")]
     NfIngressDnatRule,
 }
 
