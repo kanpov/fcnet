@@ -2,7 +2,7 @@
 name = "fcnet-use-integrated"
 version = "0.1.0"
 edition = "2021"
-description = "A library for Firecracker microVM networking"
+description = "A fcnet implementation that runs directly integrated into your application's process as a library."
 license = "MIT"
 keywords = ["firecracker", "microvm", "networking"]
 categories = ["network-programming"]
