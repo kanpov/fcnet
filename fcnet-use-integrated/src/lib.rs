@@ -24,19 +24,19 @@ const NFT_FILTER_CHAIN: &str = "filter";
 /// An error that can be emitted by embedded fcnet.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("An rtnetlink operation failed: `{0}`")]
+    #[error("An rtnetlink operation failed: {0}")]
     NetlinkOperationError(rtnetlink::Error),
-    #[error("Creating or deleting a tap device failed: `{0}`")]
+    #[error("Creating or deleting a tap device failed: {0}")]
     TapDeviceError(tokio_tun::Error),
     #[cfg(feature = "namespaced")]
-    #[error("Interacting with a network namespace failed: `{0}`")]
+    #[error("Interacting with a network namespace failed: {0}")]
     NetnsError(NetNsError),
-    #[error("A generic I/O error occurred: `{0}`")]
+    #[error("A generic I/O error occurred: {0}")]
     IoError(std::io::Error),
     #[cfg(feature = "namespaced")]
-    #[error("Receiving from a supporting oneshot channel failed: `{0}`")]
+    #[error("Receiving from a supporting oneshot channel failed: {0}")]
     ChannelRecvError(tokio::sync::oneshot::error::RecvError),
-    #[error("Invoking nftables failed: `{0}`")]
+    #[error("Invoking nftables failed: {0}")]
     NftablesError(NftablesError),
     #[error("An nftables object was not found in the current ruleset")]
     ObjectNotFound(ObjectType),

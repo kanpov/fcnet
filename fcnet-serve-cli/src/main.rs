@@ -46,10 +46,12 @@ fn main() {
         }
     };
 
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Could not build Tokio runtime for blocking on the main future")
-        .block_on(future)
-        .expect("Network operation failed");
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else {
+        eprintln!("Could not start a Tokio runtime");
+        return;
+    };
+
+    if let Err(err) = runtime.block_on(future) {
+        eprintln!("{err}");
+    }
 }
