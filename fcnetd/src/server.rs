@@ -4,7 +4,7 @@ use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation};
 use nix::unistd::{Gid, Uid};
 use serde::Deserialize;
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{UnixListener, UnixStream},
 };
 
@@ -19,7 +19,7 @@ struct Request {
 #[tracing::instrument(skip(cli))]
 pub async fn start(cli: Cli) {
     let listener = setup_socket(&cli);
-    tracing::info!("Starting to serve over the socket: {}", cli.address);
+    tracing::info!("Starting to serve over the socket: {}", cli.socket_path);
 
     let cli = Arc::new(cli);
     let mut connection_id = 0;
@@ -43,9 +43,8 @@ pub async fn start(cli: Cli) {
 
 #[tracing::instrument(skip(cli, stream))]
 async fn serve_connection(cli: Arc<Cli>, mut stream: UnixStream, connection_id: u64) {
-    let mut line_reader = BufReader::new(&mut stream).lines();
-
     if let Some(ref password) = cli.password {
+        let mut line_reader = BufReader::new(&mut stream).lines();
         let provided_password = match line_reader.next_line().await {
             Ok(Some(password)) => password,
             Ok(None) => {
@@ -72,10 +71,11 @@ async fn serve_connection(cli: Arc<Cli>, mut stream: UnixStream, connection_id: 
     }
 
     loop {
+        let mut line_reader = BufReader::new(&mut stream).lines();
         let request_json = match line_reader.next_line().await {
             Ok(Some(line)) => line,
             Ok(None) => {
-                tracing::info!("Connection was gracefully closed");
+                tracing::info!("Connection was closed");
                 return;
             }
             Err(err) => {
@@ -83,24 +83,43 @@ async fn serve_connection(cli: Arc<Cli>, mut stream: UnixStream, connection_id: 
                 continue;
             }
         };
+        drop(line_reader);
 
         let Ok(request) = serde_json::from_str::<Request>(&request_json) else {
             tracing::warn!(request_json, "Received a malformed request on the connection");
             continue;
         };
 
-        dbg!(request);
+        match fcnet::run(&request.network, request.operation).await {
+            Ok(_) => {
+                tracing::info!(operation = ?request.operation, "Network operation succeeded");
+                if let Err(err) = stream.write_all(b"OK\n").await {
+                    tracing::error!(?err, "Could not write OK response to the connection");
+                }
+            }
+            Err(err) => {
+                tracing::warn!(?err, operation = ?request.operation, "Network operation failed");
+                if let Err(err) = stream.write_all(format!("{err}\n").as_bytes()).await {
+                    tracing::error!(?err, "Could not write error response to the connection");
+                }
+            }
+        }
     }
 }
 
 #[tracing::instrument(skip(cli))]
 fn setup_socket(cli: &Cli) -> UnixListener {
-    let listener = UnixListener::bind(&cli.address).expect("Could not bind to the socket");
-    tracing::debug!("Listening on the socket: {}", cli.address);
+    if std::fs::exists(&cli.socket_path).expect("Could not check if socket exists") {
+        std::fs::remove_file(&cli.socket_path).expect("Could not remove socket");
+        tracing::debug!("Removed pre-existing socket");
+    }
+
+    let listener = UnixListener::bind(&cli.socket_path).expect("Could not bind to the socket");
+    tracing::debug!("Listening on the socket: {}", cli.socket_path);
 
     if cli.uid.is_some() || cli.gid.is_some() {
         nix::unistd::chown(
-            &PathBuf::from(&cli.address),
+            &PathBuf::from(&cli.socket_path),
             cli.uid.map(Uid::from_raw),
             cli.gid.map(Gid::from_raw),
         )

@@ -29,7 +29,7 @@ struct Cli {
     pub password: Option<String>,
     #[arg(help = "The logging level to use", long = "log-level", short = 'L', default_value_t = CliLogLevel::Debug)]
     pub log_level: CliLogLevel,
-    pub address: String,
+    pub socket_path: String,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy)]

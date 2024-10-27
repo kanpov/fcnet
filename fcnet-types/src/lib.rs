@@ -59,6 +59,7 @@ pub enum FirecrackerNetworkType {
         veth2_name: String,
         veth1_ip: IpInet,
         veth2_ip: IpInet,
+        #[cfg_attr(feature = "serde", serde(default))]
         forwarded_guest_ip: Option<IpAddr>,
     },
 }
