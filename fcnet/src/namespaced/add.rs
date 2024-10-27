@@ -16,7 +16,7 @@ use crate::{
     NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN, NFT_TABLE,
 };
 
-use super::{use_netns_in_thread, NamespacedData};
+use super::{outer_egress_forward_expr, outer_ingress_forward_expr, outer_masq_expr, use_netns_in_thread, NamespacedData};
 
 pub(super) async fn add(
     namespaced_data: NamespacedData<'_>,
@@ -105,68 +105,29 @@ async fn setup_outer_nf_rules(
         family: network.nf_family(),
         table: NFT_TABLE.to_string(),
         chain: NFT_POSTROUTING_CHAIN.to_string(),
-        expr: vec![
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Payload(Payload::PayloadField(PayloadField {
-                    protocol: nat_proto_from_addr(namespaced_data.veth2_ip.address()),
-                    field: "saddr".to_string(),
-                }))),
-                right: Expression::String(namespaced_data.veth2_ip.address().to_string()),
-                op: Operator::EQ,
-            }),
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
-                right: Expression::String(network.iface_name.to_string()),
-                op: Operator::EQ,
-            }),
-            Statement::Masquerade(None),
-        ],
+        expr: outer_masq_expr(network, namespaced_data),
         handle: None,
         index: None,
         comment: None,
     }));
 
-    // forward packets from host iface to veth
+    // forward ingress packets from host iface to veth
     batch.add(NfListObject::Rule(Rule {
         family: network.nf_family(),
         table: NFT_TABLE.to_string(),
         chain: NFT_FILTER_CHAIN.to_string(),
-        expr: vec![
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Iifname })),
-                right: Expression::String(network.iface_name.clone()),
-                op: Operator::EQ,
-            }),
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
-                right: Expression::String(namespaced_data.veth1_name.to_string()),
-                op: Operator::EQ,
-            }),
-            Statement::Accept(None),
-        ],
+        expr: outer_ingress_forward_expr(network, namespaced_data),
         handle: None,
         index: None,
         comment: None,
     }));
 
-    // forward packets from veth to host iface
+    // forward egress packets from veth to host iface
     batch.add(NfListObject::Rule(Rule {
         family: network.nf_family(),
         table: NFT_TABLE.to_string(),
         chain: NFT_FILTER_CHAIN.to_string(),
-        expr: vec![
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
-                right: Expression::String(network.iface_name.clone()),
-                op: Operator::EQ,
-            }),
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Iifname })),
-                right: Expression::String(namespaced_data.veth1_name.to_string()),
-                op: Operator::EQ,
-            }),
-            Statement::Accept(None),
-        ],
+        expr: outer_egress_forward_expr(network, namespaced_data),
         handle: None,
         index: None,
         comment: None,

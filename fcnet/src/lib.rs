@@ -107,7 +107,8 @@ pub enum FirecrackerNetworkObject {
     NfPostroutingChain,
     NfFilterChain,
     NfMasqueradeRule,
-    NfForwardRule,
+    NfEgressForwardRule,
+    NfIngressForwardRule,
 }
 
 /// An operation that can be made with a FirecrackerNetwork.

@@ -124,7 +124,12 @@ async fn delete(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle)
 
     if forward_rule_handle.is_none() {
         return Err(FirecrackerNetworkError::ObjectNotFound(
-            FirecrackerNetworkObject::NfForwardRule,
+            FirecrackerNetworkObject::NfEgressForwardRule,
+        ));
+    }
+    if masquerade_rule_handle.is_none() {
+        return Err(FirecrackerNetworkError::ObjectNotFound(
+            FirecrackerNetworkObject::NfMasqueradeRule,
         ));
     }
 
@@ -188,7 +193,7 @@ async fn check(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) 
 
     if !forward_rule_exists {
         return Err(FirecrackerNetworkError::ObjectNotFound(
-            FirecrackerNetworkObject::NfForwardRule,
+            FirecrackerNetworkObject::NfEgressForwardRule,
         ));
     }
 

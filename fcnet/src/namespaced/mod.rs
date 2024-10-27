@@ -1,8 +1,14 @@
 use std::net::IpAddr;
 
 use cidr::IpInet;
+use nftables::{
+    expr::{Expression, Meta, MetaKey, NamedExpression, Payload, PayloadField},
+    stmt::{Match, Operator, Statement},
+};
 
-use crate::{FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation, FirecrackerNetworkType};
+use crate::{
+    nat_proto_from_addr, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation, FirecrackerNetworkType,
+};
 use std::future::Future;
 
 mod add;
@@ -81,4 +87,55 @@ async fn use_netns_in_thread(
         Ok(result) => result,
         Err(err) => Err(FirecrackerNetworkError::ChannelRecvError(err)),
     }
+}
+
+fn outer_masq_expr(network: &FirecrackerNetwork, namespaced_data: &NamespacedData<'_>) -> Vec<Statement> {
+    vec![
+        Statement::Match(Match {
+            left: Expression::Named(NamedExpression::Payload(Payload::PayloadField(PayloadField {
+                protocol: nat_proto_from_addr(namespaced_data.veth2_ip.address()),
+                field: "saddr".to_string(),
+            }))),
+            right: Expression::String(namespaced_data.veth2_ip.address().to_string()),
+            op: Operator::EQ,
+        }),
+        Statement::Match(Match {
+            left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
+            right: Expression::String(network.iface_name.to_string()),
+            op: Operator::EQ,
+        }),
+        Statement::Masquerade(None),
+    ]
+}
+
+fn outer_ingress_forward_expr(network: &FirecrackerNetwork, namespaced_data: &NamespacedData<'_>) -> Vec<Statement> {
+    vec![
+        Statement::Match(Match {
+            left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Iifname })),
+            right: Expression::String(network.iface_name.clone()),
+            op: Operator::EQ,
+        }),
+        Statement::Match(Match {
+            left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
+            right: Expression::String(namespaced_data.veth1_name.to_string()),
+            op: Operator::EQ,
+        }),
+        Statement::Accept(None),
+    ]
+}
+
+fn outer_egress_forward_expr(network: &FirecrackerNetwork, namespaced_data: &NamespacedData<'_>) -> Vec<Statement> {
+    vec![
+        Statement::Match(Match {
+            left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
+            right: Expression::String(network.iface_name.clone()),
+            op: Operator::EQ,
+        }),
+        Statement::Match(Match {
+            left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Iifname })),
+            right: Expression::String(namespaced_data.veth1_name.to_string()),
+            op: Operator::EQ,
+        }),
+        Statement::Accept(None),
+    ]
 }
