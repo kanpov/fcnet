@@ -1,22 +1,23 @@
-use std::{net::IpAddr, os::fd::AsRawFd, vec};
+use std::{net::IpAddr, os::fd::AsRawFd};
 
 use cidr::IpInet;
 use nftables::{
     batch::Batch,
-    expr::{Expression, Meta, MetaKey, NamedExpression, Payload, PayloadField},
     schema::{Chain, NfListObject, Rule, Table},
-    stmt::{Match, NATFamily, Operator, Statement, NAT},
     types::{NfChainPolicy, NfChainType, NfFamily, NfHook},
 };
 use nftables_async::{apply_ruleset, get_current_ruleset};
 use tokio_tun::TunBuilder;
 
 use crate::{
-    add_base_chains_if_needed, get_link_index, nat_proto_from_addr, netns::NetNs, FirecrackerNetwork, FirecrackerNetworkError,
-    NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN, NFT_TABLE,
+    add_base_chains_if_needed, get_link_index, netns::NetNs, FirecrackerNetwork, FirecrackerNetworkError, NFT_FILTER_CHAIN,
+    NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN, NFT_TABLE,
 };
 
-use super::{outer_egress_forward_expr, outer_ingress_forward_expr, outer_masq_expr, use_netns_in_thread, NamespacedData};
+use super::{
+    inner_dnat_expr, inner_snat_expr, outer_egress_forward_expr, outer_ingress_forward_expr, outer_masq_expr,
+    use_netns_in_thread, NamespacedData,
+};
 
 pub(super) async fn add(
     namespaced_data: NamespacedData<'_>,
@@ -293,27 +294,7 @@ async fn setup_inner_nf_rules(
         family: nf_family,
         table: NFT_TABLE.to_string(),
         chain: NFT_POSTROUTING_CHAIN.to_string(),
-        expr: vec![
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Oifname })),
-                right: Expression::String(veth2_name.clone()),
-                op: Operator::EQ,
-            }),
-            Statement::Match(Match {
-                left: Expression::Named(NamedExpression::Payload(Payload::PayloadField(PayloadField {
-                    protocol: nat_proto_from_addr(guest_ip.address()),
-                    field: "saddr".to_string(),
-                }))),
-                right: Expression::String(guest_ip.address().to_string()),
-                op: Operator::EQ,
-            }),
-            Statement::SNAT(Some(NAT {
-                addr: Some(Expression::String(veth2_ip.address().to_string())),
-                family: Some(nat_family_from_inet(&veth2_ip)),
-                port: None,
-                flags: None,
-            })),
-        ],
+        expr: inner_snat_expr(veth2_name.clone(), guest_ip, veth2_ip, nf_family),
         handle: None,
         index: None,
         comment: None,
@@ -326,27 +307,7 @@ async fn setup_inner_nf_rules(
             family: nf_family,
             table: NFT_TABLE.to_string(),
             chain: NFT_PREROUTING_CHAIN.to_string(),
-            expr: vec![
-                Statement::Match(Match {
-                    left: Expression::Named(NamedExpression::Meta(Meta { key: MetaKey::Iifname })),
-                    right: Expression::String(veth2_name),
-                    op: Operator::EQ,
-                }),
-                Statement::Match(Match {
-                    left: Expression::Named(NamedExpression::Payload(Payload::PayloadField(PayloadField {
-                        protocol: nat_proto_from_addr(forwarded_guest_ip),
-                        field: "daddr".to_string(),
-                    }))),
-                    right: Expression::String(forwarded_guest_ip.to_string()),
-                    op: Operator::EQ,
-                }),
-                Statement::DNAT(Some(NAT {
-                    addr: Some(Expression::String(guest_ip.address().to_string())),
-                    family: Some(nat_family_from_inet(&guest_ip)),
-                    port: None,
-                    flags: None,
-                })),
-            ],
+            expr: inner_dnat_expr(veth2_name, forwarded_guest_ip, guest_ip, nf_family),
             handle: None,
             index: None,
             comment: None,
@@ -356,11 +317,4 @@ async fn setup_inner_nf_rules(
     apply_ruleset(&batch.to_nftables(), nft_path.as_deref(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)
-}
-
-fn nat_family_from_inet(inet: &IpInet) -> NATFamily {
-    match inet {
-        IpInet::V4(_) => NATFamily::IP,
-        IpInet::V6(_) => NATFamily::IP6,
-    }
 }

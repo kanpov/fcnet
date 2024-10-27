@@ -109,10 +109,13 @@ pub enum FirecrackerNetworkObject {
     IpRoute,
     NfTable,
     NfPostroutingChain,
+    NfPreroutingChain,
     NfFilterChain,
     NfMasqueradeRule,
     NfEgressForwardRule,
     NfIngressForwardRule,
+    NfEgressSnatRule,
+    NfIngressDnatRule,
 }
 
 /// An operation that can be made with a FirecrackerNetwork.
@@ -300,6 +303,7 @@ fn check_base_chains(network: &FirecrackerNetwork, current_ruleset: &Nftables) -
     Ok(())
 }
 
+#[inline]
 fn nat_proto_from_addr(addr: IpAddr) -> String {
     match addr {
         IpAddr::V4(_) => "ip".to_string(),
