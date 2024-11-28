@@ -1,3 +1,4 @@
+use backend::Backend;
 use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
 use nftables::helper::NftablesError;
 
@@ -10,6 +11,7 @@ pub use netns::NetNsError;
 #[cfg(feature = "simple")]
 mod simple;
 
+pub mod backend;
 pub(crate) mod util;
 
 const NFT_TABLE: &str = "fcnet";
@@ -61,9 +63,13 @@ pub enum FirecrackerNetworkObjectType {
 }
 
 /// Run an operation on a [FirecrackerNetwork] via the integrated backend.
-pub async fn run(network: &FirecrackerNetwork, operation: FirecrackerNetworkOperation) -> Result<(), FirecrackerNetworkError> {
-    let (connection, netlink_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
-    tokio::task::spawn(connection);
+pub async fn run<B: Backend>(
+    network: &FirecrackerNetwork,
+    operation: FirecrackerNetworkOperation,
+) -> Result<(), FirecrackerNetworkError> {
+    let (connection, netlink_handle, _) =
+        rtnetlink::new_connection_with_socket::<B::NetlinkSocket>().map_err(FirecrackerNetworkError::IoError)?;
+    B::spawn_connection(connection);
 
     match &network.network_type {
         #[cfg(feature = "simple")]
@@ -76,6 +82,6 @@ pub async fn run(network: &FirecrackerNetwork, operation: FirecrackerNetworkOper
             veth1_ip: _,
             veth2_ip: _,
             forwarded_guest_ip: _,
-        } => namespaced::run(operation, network, netlink_handle).await,
+        } => namespaced::run::<B>(operation, network, netlink_handle).await,
     }
 }

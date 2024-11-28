@@ -12,7 +12,8 @@ use tokio_tun::TunBuilder;
 use crate::{
     netns::NetNs,
     util::{add_base_chains_if_needed, get_link_index, FirecrackerNetworkExt},
-    FirecrackerNetwork, FirecrackerNetworkError, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN, NFT_TABLE,
+    Backend, FirecrackerNetwork, FirecrackerNetworkError, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN, NFT_PREROUTING_CHAIN,
+    NFT_TABLE,
 };
 
 use super::{
@@ -20,7 +21,7 @@ use super::{
     use_netns_in_thread, NamespacedData,
 };
 
-pub(super) async fn add(
+pub(super) async fn add<B: Backend>(
     namespaced_data: NamespacedData<'_>,
     network: &FirecrackerNetwork,
     outer_handle: rtnetlink::Handle,
@@ -36,8 +37,8 @@ pub(super) async fn add(
     let guest_ip = network.guest_ip;
     let forwarded_guest_ip = *namespaced_data.forwarded_guest_ip;
     let nf_family = network.nf_family();
-    use_netns_in_thread(namespaced_data.netns_name.to_string(), async move {
-        setup_inner_interfaces(tap_name, tap_ip, veth2_name.clone(), veth2_ip, veth1_ip).await?;
+    use_netns_in_thread::<B>(namespaced_data.netns_name.to_string(), async move {
+        setup_inner_interfaces::<B>(tap_name, tap_ip, veth2_name.clone(), veth2_ip, veth1_ip).await?;
         setup_inner_nf_rules(nf_family, nft_path, veth2_name, veth2_ip, forwarded_guest_ip, guest_ip).await
     })
     .await?;
@@ -177,7 +178,7 @@ async fn setup_outer_forward_route(
     Ok(())
 }
 
-async fn setup_inner_interfaces(
+async fn setup_inner_interfaces<B: Backend>(
     tap_name: String,
     tap_ip: IpInet,
     veth2_name: String,
@@ -191,8 +192,9 @@ async fn setup_inner_interfaces(
         .up()
         .try_build()
         .map_err(FirecrackerNetworkError::TapDeviceError)?;
-    let (connection, inner_handle, _) = rtnetlink::new_connection().map_err(FirecrackerNetworkError::IoError)?;
-    tokio::task::spawn(connection);
+    let (connection, inner_handle, _) =
+        rtnetlink::new_connection_with_socket::<B::NetlinkSocket>().map_err(FirecrackerNetworkError::IoError)?;
+    B::spawn_connection(connection);
 
     let veth2_idx = get_link_index(veth2_name.clone(), &inner_handle).await?;
     inner_handle

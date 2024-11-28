@@ -8,7 +8,8 @@ use nftables::{
 };
 
 use crate::{
-    util::nat_proto_from_addr, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation, FirecrackerNetworkType,
+    backend::Backend, util::nat_proto_from_addr, FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkOperation,
+    FirecrackerNetworkType,
 };
 use std::future::Future;
 
@@ -28,7 +29,7 @@ struct NamespacedData<'a> {
     forwarded_guest_ip: &'a Option<IpAddr>,
 }
 
-pub async fn run(
+pub async fn run<B: Backend>(
     operation: FirecrackerNetworkOperation,
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
@@ -54,14 +55,14 @@ pub async fn run(
     };
 
     match operation {
-        FirecrackerNetworkOperation::Add => add(namespaced_data, network, netlink_handle).await,
-        FirecrackerNetworkOperation::Check => check(namespaced_data, network, netlink_handle).await,
+        FirecrackerNetworkOperation::Add => add::<B>(namespaced_data, network, netlink_handle).await,
+        FirecrackerNetworkOperation::Check => check::<B>(namespaced_data, network, netlink_handle).await,
         FirecrackerNetworkOperation::Delete => delete(namespaced_data, network).await,
     }
 }
 
 #[cfg(feature = "namespaced")]
-async fn use_netns_in_thread(
+async fn use_netns_in_thread<B: Backend>(
     netns_name: String,
     future: impl 'static + Send + Future<Output = Result<(), FirecrackerNetworkError>>,
 ) -> Result<(), FirecrackerNetworkError> {
@@ -71,15 +72,10 @@ async fn use_netns_in_thread(
     let (sender, receiver) = tokio::sync::oneshot::channel();
 
     std::thread::spawn(move || {
-        let result = {
-            match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-                Ok(runtime) => runtime.block_on(async move {
-                    netns.enter().map_err(FirecrackerNetworkError::NetnsError)?;
-                    future.await
-                }),
-                Err(err) => Err(FirecrackerNetworkError::IoError(err)),
-            }
-        };
+        let result = B::block_on_current_thread(async move {
+            netns.enter().map_err(FirecrackerNetworkError::NetnsError)?;
+            future.await
+        });
 
         let _ = sender.send(result);
     });

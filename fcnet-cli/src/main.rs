@@ -1,5 +1,6 @@
 use arguments::{Cli, Subcommands};
 use clap::Parser;
+use fcnet::backend::TokioBackend;
 use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
 
 mod arguments;
@@ -38,11 +39,11 @@ fn main() {
 
     let future = {
         if cli.operation_group.add {
-            fcnet::run(&network, FirecrackerNetworkOperation::Add)
+            fcnet::run::<TokioBackend>(&network, FirecrackerNetworkOperation::Add)
         } else if cli.operation_group.delete {
-            fcnet::run(&network, FirecrackerNetworkOperation::Delete)
+            fcnet::run::<TokioBackend>(&network, FirecrackerNetworkOperation::Delete)
         } else {
-            fcnet::run(&network, FirecrackerNetworkOperation::Check)
+            fcnet::run::<TokioBackend>(&network, FirecrackerNetworkOperation::Check)
         }
     };
 

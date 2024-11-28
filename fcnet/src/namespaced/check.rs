@@ -11,6 +11,7 @@ use nftables_async::get_current_ruleset;
 use rtnetlink::IpVersion;
 
 use crate::{
+    backend::Backend,
     util::{check_base_chains, FirecrackerNetworkExt},
     FirecrackerNetwork, FirecrackerNetworkError, FirecrackerNetworkObjectType, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
     NFT_PREROUTING_CHAIN, NFT_TABLE,
@@ -21,7 +22,7 @@ use super::{
     use_netns_in_thread, NamespacedData,
 };
 
-pub(super) async fn check(
+pub(super) async fn check<B: Backend>(
     namespaced_data: NamespacedData<'_>,
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
@@ -35,7 +36,7 @@ pub(super) async fn check(
     let guest_ip = network.guest_ip;
     let nf_family = network.nf_family();
 
-    use_netns_in_thread(namespaced_data.netns_name.to_string(), async move {
+    use_netns_in_thread::<B>(namespaced_data.netns_name.to_string(), async move {
         check_inner_nf_rules(nft_path, forwarded_guest_ip, veth2_name, guest_ip, veth2_ip, nf_family).await
     })
     .await?;

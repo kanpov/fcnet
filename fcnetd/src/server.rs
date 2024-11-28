@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use fcnet::backend::TokioBackend;
 use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation};
 use nix::unistd::{Gid, Uid};
 use serde::Deserialize;
@@ -90,7 +91,7 @@ async fn serve_connection(cli: Arc<Cli>, mut stream: UnixStream, connection_id: 
             continue;
         };
 
-        match fcnet::run(&request.network, request.operation).await {
+        match fcnet::run::<TokioBackend>(&request.network, request.operation).await {
             Ok(_) => {
                 tracing::info!(operation = ?request.operation, "Network operation succeeded");
                 if let Err(err) = stream.write_all(b"OK\n").await {
