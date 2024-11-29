@@ -21,26 +21,44 @@ const NFT_PREROUTING_CHAIN: &str = "prerouting";
 const NFT_FILTER_CHAIN: &str = "filter";
 
 /// An error that can be emitted by embedded fcnet.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum FirecrackerNetworkError {
-    #[error("An rtnetlink operation failed: {0}")]
     NetlinkOperationError(rtnetlink::Error),
-    #[error("Creating or deleting a tap device failed: {0}")]
     TapDeviceError(tokio_tun::Error),
     #[cfg(feature = "namespaced")]
-    #[error("Interacting with a network namespace failed: {0}")]
     NetnsError(NetNsError),
-    #[error("A generic I/O error occurred: {0}")]
     IoError(std::io::Error),
     #[cfg(feature = "namespaced")]
-    #[error("Receiving from a supporting oneshot channel failed: {0}")]
     ChannelCancelError(futures_channel::oneshot::Canceled),
-    #[error("Invoking nftables failed: {0}")]
     NftablesError(NftablesError),
-    #[error("An nftables object was not found in the current ruleset")]
     ObjectNotFound(FirecrackerNetworkObjectType),
-    #[error("In a netlink route, both an IPv4 and an IPv6 address are being used (address, gateway)")]
     ForbiddenDualStackInRoute,
+}
+
+impl std::fmt::Display for FirecrackerNetworkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FirecrackerNetworkError::NetlinkOperationError(err) => write!(f, "An rtnetlink operation failed: {err}"),
+            FirecrackerNetworkError::TapDeviceError(err) => write!(f, "Creating or deleting a tap device failed: {err}"),
+            #[cfg(feature = "namespaced")]
+            FirecrackerNetworkError::NetnsError(err) => {
+                write!(f, "Interacting wtih a network namespace failed: {err}")
+            }
+            FirecrackerNetworkError::IoError(err) => write!(f, "A generic I/O error occurred: {err}"),
+            #[cfg(feature = "namespaced")]
+            FirecrackerNetworkError::ChannelCancelError(err) => {
+                write!(f, "Receiving from a supporting oneshot channel failed: {err}")
+            }
+            FirecrackerNetworkError::NftablesError(err) => write!(f, "Invoking nftables failed: {err}"),
+            FirecrackerNetworkError::ObjectNotFound(object_type) => {
+                write!(f, "An nftables object was not found in the current ruleset: {object_type:?}")
+            }
+            FirecrackerNetworkError::ForbiddenDualStackInRoute => write!(
+                f,
+                "In a netlink route, both an IPv4 and an IPv6 support are being used (address, gateway)"
+            ),
+        }
+    }
 }
 
 /// An object created by the integrated Firecracker networking backend.

@@ -1,12 +1,10 @@
-use std::{
-    future::Future,
-    sync::{Arc, OnceLock},
-};
-
 #[cfg(feature = "smol-backend")]
 use async_executor::{Executor, LocalExecutor};
 use netlink_packet_route::RouteNetlinkMessage;
 use netlink_proto::Connection;
+use std::future::Future;
+#[cfg(feature = "smol-backend")]
+use std::sync::{Arc, OnceLock};
 
 pub trait Backend: Send + Sync + 'static {
     type NetlinkSocket: netlink_sys::AsyncSocket + Send;

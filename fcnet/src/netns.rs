@@ -10,26 +10,35 @@ use nix::sched::{setns, unshare, CloneFlags};
 use nix::unistd::gettid;
 
 /// An error that can occur in the network namespace backend.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum NetNsError {
-    #[error("Cannot create netns directory: {0}")]
     CreateNsDirError(std::io::Error),
-    #[error("Cannot create netns: {0}")]
     CreateNsError(std::io::Error),
-    #[error("Cannot open netns {0}: {1}")]
     OpenNsError(std::path::PathBuf, std::io::Error),
-    #[error("Failed to close netns: {0}")]
     CloseNsError(nix::Error),
-    #[error("Failed to mount {0}: {1}")]
     MountError(String, nix::Error),
-    #[error("Failed to unmount {0}: {1}")]
     UnmountError(std::path::PathBuf, nix::Error),
-    #[error("Failed to unshare: {0}")]
     UnshareError(nix::Error),
-    #[error("Failed to join thread: {0}")]
     JoinThreadError(String),
-    #[error("Cannot setns: {0}")]
     SetnsError(nix::Error),
+}
+
+impl std::error::Error for NetNsError {}
+
+impl std::fmt::Display for NetNsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetNsError::CreateNsDirError(err) => write!(f, "Cannot create netns directory: {err}"),
+            NetNsError::CreateNsError(err) => write!(f, "Cannot create netns: {err}"),
+            NetNsError::OpenNsError(path, err) => write!(f, "Cannot open netns {}: {err}", path.display()),
+            NetNsError::CloseNsError(err) => write!(f, "Cannot close netns: {err}"),
+            NetNsError::MountError(mount, err) => write!(f, "Failed to mount {mount}: {err}"),
+            NetNsError::UnmountError(path, err) => write!(f, "Failed to unmount {}: {err}", path.display()),
+            NetNsError::UnshareError(err) => write!(f, "Failed to unshare: {err}"),
+            NetNsError::JoinThreadError(detail) => write!(f, "Failed to join thread: {detail}"),
+            NetNsError::SetnsError(err) => write!(f, "Cannot setns: {err}"),
+        }
+    }
 }
 
 pub trait NetNsEnvironment {
