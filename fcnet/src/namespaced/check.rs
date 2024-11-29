@@ -27,7 +27,7 @@ pub(super) async fn check<B: Backend>(
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
 ) -> Result<(), FirecrackerNetworkError> {
-    check_outer_nf_rules(network, &namespaced_data).await?;
+    check_outer_nf_rules::<B>(network, &namespaced_data).await?;
 
     let nft_path = network.nft_path.clone();
     let forwarded_guest_ip = *namespaced_data.forwarded_guest_ip;
@@ -37,18 +37,18 @@ pub(super) async fn check<B: Backend>(
     let nf_family = network.nf_family();
 
     use_netns_in_thread::<B>(namespaced_data.netns_name.to_string(), async move {
-        check_inner_nf_rules(nft_path, forwarded_guest_ip, veth2_name, guest_ip, veth2_ip, nf_family).await
+        check_inner_nf_rules::<B>(nft_path, forwarded_guest_ip, veth2_name, guest_ip, veth2_ip, nf_family).await
     })
     .await?;
 
     check_outer_forward_route(namespaced_data, netlink_handle).await
 }
 
-async fn check_outer_nf_rules(
+async fn check_outer_nf_rules<B: Backend>(
     network: &FirecrackerNetwork,
     namespaced_data: &NamespacedData<'_>,
 ) -> Result<(), FirecrackerNetworkError> {
-    let current_ruleset = get_current_ruleset(network.nf_program(), None)
+    let current_ruleset = get_current_ruleset::<B::NftablesProcess>(network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)?;
     check_base_chains(network, &current_ruleset)?;
@@ -135,7 +135,7 @@ async fn check_outer_forward_route(
     Ok(())
 }
 
-async fn check_inner_nf_rules(
+async fn check_inner_nf_rules<B: Backend>(
     nft_path: Option<String>,
     forwarded_guest_ip: Option<IpAddr>,
     veth2_name: String,
@@ -143,7 +143,7 @@ async fn check_inner_nf_rules(
     veth2_ip: IpInet,
     nf_family: NfFamily,
 ) -> Result<(), FirecrackerNetworkError> {
-    let current_ruleset = get_current_ruleset(nft_path.as_deref(), None)
+    let current_ruleset = get_current_ruleset::<B::NftablesProcess>(nft_path.as_deref(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)?;
 

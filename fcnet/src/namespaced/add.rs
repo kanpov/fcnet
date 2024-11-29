@@ -39,11 +39,11 @@ pub(super) async fn add<B: Backend>(
     let nf_family = network.nf_family();
     use_netns_in_thread::<B>(namespaced_data.netns_name.to_string(), async move {
         setup_inner_interfaces::<B>(tap_name, tap_ip, veth2_name.clone(), veth2_ip, veth1_ip).await?;
-        setup_inner_nf_rules(nf_family, nft_path, veth2_name, veth2_ip, forwarded_guest_ip, guest_ip).await
+        setup_inner_nf_rules::<B>(nf_family, nft_path, veth2_name, veth2_ip, forwarded_guest_ip, guest_ip).await
     })
     .await?;
 
-    setup_outer_nf_rules(&namespaced_data, network).await?;
+    setup_outer_nf_rules::<B>(&namespaced_data, network).await?;
     setup_outer_forward_route(&namespaced_data, &outer_handle).await
 }
 
@@ -93,11 +93,11 @@ async fn setup_outer_interfaces(
         .map_err(FirecrackerNetworkError::NetlinkOperationError)
 }
 
-async fn setup_outer_nf_rules(
+async fn setup_outer_nf_rules<B: Backend>(
     namespaced_data: &NamespacedData<'_>,
     network: &FirecrackerNetwork,
 ) -> Result<(), FirecrackerNetworkError> {
-    let current_ruleset = get_current_ruleset(network.nf_program(), None)
+    let current_ruleset = get_current_ruleset::<B::NftablesProcess>(network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)?;
     let mut batch = Batch::new();
@@ -136,7 +136,7 @@ async fn setup_outer_nf_rules(
         comment: None,
     }));
 
-    apply_ruleset(&batch.to_nftables(), network.nf_program(), None)
+    apply_ruleset::<B::NftablesProcess>(&batch.to_nftables(), network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)
 }
@@ -246,7 +246,7 @@ async fn setup_inner_interfaces<B: Backend>(
         .map_err(FirecrackerNetworkError::NetlinkOperationError)
 }
 
-async fn setup_inner_nf_rules(
+async fn setup_inner_nf_rules<B: Backend>(
     nf_family: NfFamily,
     nft_path: Option<String>,
     veth2_name: String,
@@ -317,7 +317,7 @@ async fn setup_inner_nf_rules(
         }));
     }
 
-    apply_ruleset(&batch.to_nftables(), nft_path.as_deref(), None)
+    apply_ruleset::<B::NftablesProcess>(&batch.to_nftables(), nft_path.as_deref(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)
 }

@@ -73,7 +73,7 @@ pub async fn run<B: Backend>(
 
     match &network.network_type {
         #[cfg(feature = "simple")]
-        FirecrackerNetworkType::Simple => simple::run(network, netlink_handle, operation).await,
+        FirecrackerNetworkType::Simple => simple::run::<B>(network, netlink_handle, operation).await,
         #[cfg(feature = "namespaced")]
         FirecrackerNetworkType::Namespaced {
             netns_name: _,

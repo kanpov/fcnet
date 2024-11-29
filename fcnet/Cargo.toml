@@ -25,7 +25,7 @@ tokio-tun = "0.12.0"
 cidr = "0.3.0"
 thiserror = "1.0.64"
 nftables = "0.5.0"
-nftables-async = "0.1.1"
+nftables-async = "0.2.1"
 serde_json = "1.0.132"
 
 tokio = { version = "1.41.1", default-features = false, features = [
@@ -48,9 +48,14 @@ default = ["simple"]
 full = ["simple", "namespaced", "tokio-backend", "smol-backend"]
 simple = ["fcnet-types/simple"]
 namespaced = ["fcnet-types/namespaced", "dep:nix", "dep:futures-channel"]
-tokio-backend = ["dep:tokio", "netlink-proto/tokio_socket"]
+tokio-backend = [
+    "dep:tokio",
+    "netlink-proto/tokio_socket",
+    "nftables-async/tokio-process",
+]
 smol-backend = [
     "dep:async-executor",
     "dep:async-io",
     "netlink-proto/smol_socket",
+    "nftables-async/async-process",
 ]

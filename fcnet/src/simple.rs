@@ -9,24 +9,25 @@ use nftables_async::{apply_ruleset, get_current_ruleset};
 use tokio_tun::TunBuilder;
 
 use crate::{
+    backend::Backend,
     util::{add_base_chains_if_needed, check_base_chains, get_link_index, nat_proto_from_addr, FirecrackerNetworkExt},
     FirecrackerNetworkError, FirecrackerNetworkObjectType, FirecrackerNetworkOperation, NFT_FILTER_CHAIN, NFT_POSTROUTING_CHAIN,
     NFT_TABLE,
 };
 
-pub async fn run(
+pub async fn run<B: Backend>(
     network: &FirecrackerNetwork,
     netlink_handle: rtnetlink::Handle,
     operation: FirecrackerNetworkOperation,
 ) -> Result<(), FirecrackerNetworkError> {
     match operation {
-        FirecrackerNetworkOperation::Add => add(network, netlink_handle).await,
-        FirecrackerNetworkOperation::Check => check(network, netlink_handle).await,
-        FirecrackerNetworkOperation::Delete => delete(network, netlink_handle).await,
+        FirecrackerNetworkOperation::Add => add::<B>(network, netlink_handle).await,
+        FirecrackerNetworkOperation::Check => check::<B>(network, netlink_handle).await,
+        FirecrackerNetworkOperation::Delete => delete::<B>(network, netlink_handle).await,
     }
 }
 
-async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
+async fn add<B: Backend>(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
     TunBuilder::new()
         .name(&network.tap_name)
         .tap()
@@ -42,7 +43,7 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    let current_ruleset = get_current_ruleset(network.nf_program(), None)
+    let current_ruleset = get_current_ruleset::<B::NftablesProcess>(network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)?;
     let mut masquerade_rule_exists = false;
@@ -86,12 +87,15 @@ async fn add(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) ->
         }));
     }
 
-    apply_ruleset(&batch.to_nftables(), network.nf_program(), None)
+    apply_ruleset::<B::NftablesProcess>(&batch.to_nftables(), network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)
 }
 
-async fn delete(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
+async fn delete<B: Backend>(
+    network: &FirecrackerNetwork,
+    netlink_handle: rtnetlink::Handle,
+) -> Result<(), FirecrackerNetworkError> {
     let tap_idx = get_link_index(network.tap_name.clone(), &netlink_handle).await?;
     netlink_handle
         .link()
@@ -100,7 +104,7 @@ async fn delete(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle)
         .await
         .map_err(FirecrackerNetworkError::NetlinkOperationError)?;
 
-    let current_ruleset = get_current_ruleset(network.nf_program(), None)
+    let current_ruleset = get_current_ruleset::<B::NftablesProcess>(network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)?;
 
@@ -154,15 +158,18 @@ async fn delete(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle)
         comment: None,
     }));
 
-    apply_ruleset(&batch.to_nftables(), network.nf_program(), None)
+    apply_ruleset::<B::NftablesProcess>(&batch.to_nftables(), network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)
 }
 
-async fn check(network: &FirecrackerNetwork, netlink_handle: rtnetlink::Handle) -> Result<(), FirecrackerNetworkError> {
+async fn check<B: Backend>(
+    network: &FirecrackerNetwork,
+    netlink_handle: rtnetlink::Handle,
+) -> Result<(), FirecrackerNetworkError> {
     get_link_index(network.tap_name.clone(), &netlink_handle).await?;
 
-    let current_ruleset = get_current_ruleset(network.nf_program(), None)
+    let current_ruleset = get_current_ruleset::<B::NftablesProcess>(network.nf_program(), None)
         .await
         .map_err(FirecrackerNetworkError::NftablesError)?;
     let mut masquerade_rule_exists = false;

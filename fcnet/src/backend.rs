@@ -10,6 +10,7 @@ use netlink_proto::Connection;
 
 pub trait Backend: Send + Sync + 'static {
     type NetlinkSocket: netlink_sys::AsyncSocket + Send;
+    type NftablesProcess: nftables_async::process::Process;
 
     fn spawn_connection(connection: Connection<RouteNetlinkMessage, Self::NetlinkSocket>);
 
@@ -22,6 +23,7 @@ pub struct TokioBackend;
 #[cfg(feature = "tokio-backend")]
 impl Backend for TokioBackend {
     type NetlinkSocket = netlink_proto::sys::TokioSocket;
+    type NftablesProcess = nftables_async::process::TokioProcess;
 
     fn spawn_connection(connection: Connection<RouteNetlinkMessage, Self::NetlinkSocket>) {
         tokio::task::spawn(connection);
@@ -54,6 +56,7 @@ impl SmolBackend {
 #[cfg(feature = "smol-backend")]
 impl Backend for SmolBackend {
     type NetlinkSocket = netlink_proto::sys::SmolSocket;
+    type NftablesProcess = nftables_async::process::AsyncProcess;
 
     fn spawn_connection(connection: Connection<RouteNetlinkMessage, Self::NetlinkSocket>) {
         SMOL_EXECUTOR

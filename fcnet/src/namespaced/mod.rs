@@ -57,7 +57,7 @@ pub async fn run<B: Backend>(
     match operation {
         FirecrackerNetworkOperation::Add => add::<B>(namespaced_data, network, netlink_handle).await,
         FirecrackerNetworkOperation::Check => check::<B>(namespaced_data, network, netlink_handle).await,
-        FirecrackerNetworkOperation::Delete => delete(namespaced_data, network).await,
+        FirecrackerNetworkOperation::Delete => delete::<B>(namespaced_data, network).await,
     }
 }
 
