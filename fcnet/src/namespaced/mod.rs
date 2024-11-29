@@ -69,7 +69,7 @@ async fn use_netns_in_thread<B: Backend>(
     use crate::netns::NetNs;
 
     let netns = NetNs::get(netns_name).map_err(FirecrackerNetworkError::NetnsError)?;
-    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let (sender, receiver) = futures_channel::oneshot::channel();
 
     std::thread::spawn(move || {
         let result = B::block_on_current_thread(async move {
@@ -82,7 +82,7 @@ async fn use_netns_in_thread<B: Backend>(
 
     match receiver.await {
         Ok(result) => result,
-        Err(err) => Err(FirecrackerNetworkError::ChannelRecvError(err)),
+        Err(err) => Err(FirecrackerNetworkError::ChannelCancelError(err)),
     }
 }
 

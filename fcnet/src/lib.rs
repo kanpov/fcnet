@@ -34,7 +34,7 @@ pub enum FirecrackerNetworkError {
     IoError(std::io::Error),
     #[cfg(feature = "namespaced")]
     #[error("Receiving from a supporting oneshot channel failed: {0}")]
-    ChannelRecvError(tokio::sync::oneshot::error::RecvError),
+    ChannelCancelError(futures_channel::oneshot::Canceled),
     #[error("Invoking nftables failed: {0}")]
     NftablesError(NftablesError),
     #[error("An nftables object was not found in the current ruleset")]
