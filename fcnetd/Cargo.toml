@@ -10,7 +10,7 @@ repository = "https://github.com/rust-firecracker/fcnet"
 readme = "README.md"
 
 [dependencies]
-fcnet-types = { path = "../fcnet-types", version = "0.1.0", features = [
+fcnet-types = { path = "../fcnet-types", version = "0.1.1", features = [
     "serde",
 ] }
 fcnet = { path = "../fcnet", version = "0.7.0", features = [
