@@ -18,12 +18,7 @@ fcnet = { path = "../fcnet", version = "0.7.0", features = [
     "namespaced",
     "tokio-backend",
 ] }
-tokio = { version = "1.41.0", features = [
-    "rt",
-    "rt-multi-thread",
-    "net",
-    "macros",
-] }
+tokio = { version = "1.41.0", features = ["rt", "rt-multi-thread", "net"] }
 clap = { version = "4.5.20", features = ["derive"] }
 nix = { version = "0.29.0", default-features = false, features = [
     "user",

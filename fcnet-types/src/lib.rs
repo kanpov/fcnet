@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 #[cfg(all(not(feature = "simple"), not(feature = "namespaced")))]
 compile_error!("Either \"simple\" or \"namespaced\" networking feature flags must be enabled");
 
@@ -48,11 +50,13 @@ pub enum FirecrackerNetworkType {
     /// A "simple" network configuration, with a tap device bound to the host interface via 1 set of forwarding rules.
     /// The most optimal and performant choice for the majority of use-cases.
     #[cfg(feature = "simple")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "simple")))]
     Simple,
     /// A namespaced network configuration, with the tap device residing in a separate network namespace and being
     /// bound to the host interface via 2 sets of forwarding rules.
     /// The better choice exclusively for multiple running microVM sharing the same snapshot data (i.e. so-called "clones").
     #[cfg(feature = "namespaced")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "namespaced")))]
     Namespaced {
         netns_name: String,
         veth1_name: String,

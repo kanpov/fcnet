@@ -11,6 +11,7 @@ readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 fcnet-types = { path = "../fcnet-types", version = "0.1.0", features = [

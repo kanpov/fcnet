@@ -1,6 +1,6 @@
 [package]
 name = "fcnet-types"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Shared types for fcnet, the Firecracker networking solution"
 license = "MIT"
@@ -8,6 +8,10 @@ keywords = ["firecracker", "microvm", "networking"]
 categories = ["network-programming"]
 repository = "https://github.com/rust-firecracker/fcnet"
 readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 cidr = "0.3.0"

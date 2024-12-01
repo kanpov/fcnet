@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 #[cfg(feature = "connection-pool")]
 use std::marker::PhantomData;
 use std::path::Path;
@@ -48,6 +50,7 @@ struct Request<'net> {
 
 #[derive(Debug)]
 #[cfg(feature = "connection-pool")]
+#[cfg_attr(docsrs, doc(cfg(feature = "connection-pool")))]
 pub struct FcnetdConnectionPool<S: Socket> {
     path: PathBuf,
     password: Option<String>,
@@ -55,6 +58,7 @@ pub struct FcnetdConnectionPool<S: Socket> {
 }
 
 #[cfg(feature = "connection-pool")]
+#[cfg_attr(docsrs, doc(cfg(feature = "connection-pool")))]
 impl<S: Socket> FcnetdConnectionPool<S> {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
@@ -74,6 +78,7 @@ impl<S: Socket> FcnetdConnectionPool<S> {
 }
 
 #[cfg(feature = "deadpool")]
+#[cfg_attr(docsrs, doc(cfg(feature = "deadpool")))]
 impl<S: Socket> deadpool::managed::Manager for FcnetdConnectionPool<S> {
     type Type = FcnetdConnection<S>;
 

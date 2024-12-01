@@ -1,3 +1,5 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 use backend::Backend;
 use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation, FirecrackerNetworkType};
 use nftables::helper::NftablesError;
@@ -7,6 +9,7 @@ mod namespaced;
 #[cfg(feature = "namespaced")]
 mod netns;
 #[cfg(feature = "namespaced")]
+#[cfg_attr(docsrs, doc(cfg(feature = "namespaced")))]
 pub use netns::NetNsError;
 #[cfg(feature = "simple")]
 mod simple;
@@ -26,9 +29,11 @@ pub enum FirecrackerNetworkError {
     NetlinkOperationError(rtnetlink::Error),
     TapDeviceError(tokio_tun::Error),
     #[cfg(feature = "namespaced")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "namespaced")))]
     NetnsError(NetNsError),
     IoError(std::io::Error),
     #[cfg(feature = "namespaced")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "namespaced")))]
     ChannelCancelError(futures_channel::oneshot::Canceled),
     NftablesError(NftablesError),
     ObjectNotFound(FirecrackerNetworkObjectType),
@@ -69,14 +74,17 @@ pub enum FirecrackerNetworkObjectType {
     NfTable,
     NfPostroutingChain,
     #[cfg(feature = "namespaced")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "namespaced")))]
     NfPreroutingChain,
     NfFilterChain,
     NfMasqueradeRule,
     NfEgressForwardRule,
     NfIngressForwardRule,
     #[cfg(feature = "namespaced")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "namespaced")))]
     NfEgressSnatRule,
     #[cfg(feature = "namespaced")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "namespaced")))]
     NfIngressDnatRule,
 }
 
