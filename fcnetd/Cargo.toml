@@ -13,7 +13,7 @@ readme = "README.md"
 fcnet-types = { path = "../fcnet-types", version = "0.1.1", features = [
     "serde",
 ] }
-fcnet = { path = "../fcnet", version = "0.7.0", features = [
+fcnet = { path = "../fcnet", version = "0.7.1", features = [
     "simple",
     "namespaced",
     "tokio-backend",
