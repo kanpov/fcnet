@@ -88,7 +88,7 @@ pub enum FirecrackerNetworkObjectType {
     NfIngressDnatRule,
 }
 
-/// Run an operation on a [FirecrackerNetwork] via the integrated backend.
+/// Run a [FirecrackerNetworkOperation] on a [FirecrackerNetwork] via the given [Backend].
 pub async fn run<B: Backend>(
     network: &FirecrackerNetwork,
     operation: FirecrackerNetworkOperation,

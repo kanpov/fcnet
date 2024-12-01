@@ -427,7 +427,7 @@ checksum = "486f806e73c5707928240ddc295403b1b93c96a02038563881c4a2fd84b81ac4"
 
 [[package]]
 name = "fcnet"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "async-executor",
  "async-io 2.4.0",
@@ -810,9 +810,9 @@ dependencies = [
 
 [[package]]
 name = "nftables-async"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a4ddc22a484267a14508468fa1d467629d8ee1f309182e08f7ab0854e41e862"
+checksum = "698983cf4faebcafaaf207f46989d07025b1face3fd59604f0d28c87ca7f28c6"
 dependencies = [
  "async-process",
  "futures-util",
