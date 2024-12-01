@@ -1,6 +1,8 @@
+#[cfg(feature = "connection-pool")]
+use std::marker::PhantomData;
+use std::path::Path;
 #[cfg(feature = "deadpool")]
 use std::path::PathBuf;
-use std::{marker::PhantomData, path::Path};
 
 use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation};
 use serde::Serialize;

@@ -18,4 +18,4 @@ fcnet = { path = "../fcnet", version = "0.7.0", features = [
     "namespaced",
     "tokio-backend",
 ] }
-tokio = { version = "1.40.0", features = ["rt", "macros"] }
+tokio = { version = "1.40.0", features = ["rt"] }
