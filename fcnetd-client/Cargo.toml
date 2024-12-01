@@ -19,12 +19,16 @@ fcnet-types = { path = "../fcnet-types", version = "0.1.0", features = [
 serde = { version = "1.0.213", features = ["derive"] }
 serde_json = "1.0.132"
 thiserror = "1.0.65"
-tokio = { version = "1.41.1", default-features = false, features = [
-    "net",
-    "io-util",
-] }
+
 deadpool = { version = "0.12.1", default-features = false, features = [
     "managed",
+], optional = true }
+
+tokio = { version = "1.41.1", default-features = false, features = [
+    "net",
+], optional = true }
+tokio-util = { version = "0.7.12", default-features = false, features = [
+    "compat",
 ], optional = true }
 
 [dev-dependencies]
@@ -34,3 +38,4 @@ fcnetd-client = { path = ".", features = ["deadpool"] }
 default = []
 connection-pool = []
 deadpool = ["connection-pool", "dep:deadpool"]
+tokio-socket = ["dep:tokio", "dep:tokio-util"]

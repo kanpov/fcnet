@@ -1,15 +1,14 @@
-use std::path::Path;
 #[cfg(feature = "deadpool")]
 use std::path::PathBuf;
+use std::{marker::PhantomData, path::Path};
 
 use fcnet_types::{FirecrackerNetwork, FirecrackerNetworkOperation};
 use serde::Serialize;
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::UnixStream,
-};
+use socket::Socket;
 
 const OK_RESPONSE: &str = "OK";
+
+pub mod socket;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FcnetdError {
@@ -26,9 +25,7 @@ pub enum FcnetdError {
 }
 
 #[derive(Debug)]
-pub struct FcnetdConnection {
-    stream: UnixStream,
-}
+pub struct FcnetdConnection<S: Socket>(S);
 
 #[derive(Serialize)]
 struct Request<'net> {
@@ -38,17 +35,19 @@ struct Request<'net> {
 
 #[derive(Debug)]
 #[cfg(feature = "connection-pool")]
-pub struct FcnetdConnectionPool {
+pub struct FcnetdConnectionPool<S: Socket> {
     path: PathBuf,
     password: Option<String>,
+    phantom: PhantomData<S>,
 }
 
 #[cfg(feature = "connection-pool")]
-impl FcnetdConnectionPool {
+impl<S: Socket> FcnetdConnectionPool<S> {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
             password: None,
+            phantom: PhantomData,
         }
     }
 
@@ -56,13 +55,14 @@ impl FcnetdConnectionPool {
         Self {
             path: path.into(),
             password: Some(password.into()),
+            phantom: PhantomData,
         }
     }
 }
 
 #[cfg(feature = "deadpool")]
-impl deadpool::managed::Manager for FcnetdConnectionPool {
-    type Type = FcnetdConnection;
+impl<S: Socket> deadpool::managed::Manager for FcnetdConnectionPool<S> {
+    type Type = FcnetdConnection<S>;
 
     type Error = std::io::Error;
 
@@ -82,29 +82,28 @@ impl deadpool::managed::Manager for FcnetdConnectionPool {
     }
 }
 
-impl FcnetdConnection {
+impl<S: Socket> FcnetdConnection<S> {
     pub async fn connect(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
-        let stream = UnixStream::connect(path).await?;
-        Ok(Self { stream })
+        let socket = S::connect(path.as_ref()).await?;
+        Ok(Self(socket))
     }
 
     pub async fn connect_with_password(path: impl AsRef<Path>, password: impl Into<String>) -> Result<Self, std::io::Error> {
         let password = password.into();
-        let mut stream = UnixStream::connect(path).await?;
-        stream.write_all(format!("{password}\n").as_bytes()).await?;
-        Ok(Self { stream })
+        let mut socket = S::connect(path.as_ref()).await?;
+        socket.write_line(password).await?;
+        Ok(Self(socket))
     }
 
     pub async fn run(&mut self, network: &FirecrackerNetwork, operation: FirecrackerNetworkOperation) -> Result<(), FcnetdError> {
         let request = Request { operation, network };
         let request_json = serde_json::to_string(&request).map_err(FcnetdError::RequestSerializeError)?;
-        self.stream
-            .write_all(format!("{request_json}\n").as_bytes())
+        self.0
+            .write_line(request_json)
             .await
             .map_err(FcnetdError::RequestWriteError)?;
 
-        let mut response_reader = BufReader::new(&mut self.stream).lines();
-        let response = match response_reader.next_line().await {
+        let response = match self.0.read_line().await {
             Ok(Some(response)) => response,
             Ok(None) => return Err(FcnetdError::ConnectionClosed),
             Err(err) => return Err(FcnetdError::ResponseReadError(err)),
