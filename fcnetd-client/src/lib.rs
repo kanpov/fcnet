@@ -10,18 +10,29 @@ const OK_RESPONSE: &str = "OK";
 
 pub mod socket;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum FcnetdError {
-    #[error("Writing the request to the connection failed: {0}")]
     RequestWriteError(std::io::Error),
-    #[error("Serializing the request to JSON failed: {0}")]
     RequestSerializeError(serde_json::Error),
-    #[error("Reading the response from the connection failed: {0}")]
     ResponseReadError(std::io::Error),
-    #[error("The connection was closed before a response could be received")]
     ConnectionClosed,
-    #[error("The daemon returned a failure of the requested operation: {0}")]
     OperationFailed(String),
+}
+
+impl std::error::Error for FcnetdError {}
+
+impl std::fmt::Display for FcnetdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FcnetdError::RequestWriteError(err) => write!(f, "Writing the request to the socket failed: {err}"),
+            FcnetdError::RequestSerializeError(err) => write!(f, "Serializing the request to JSON failed: {err}"),
+            FcnetdError::ResponseReadError(err) => write!(f, "Reading the response from the connection failed: {err}"),
+            FcnetdError::ConnectionClosed => write!(f, "The connection was closed before a response could be received"),
+            FcnetdError::OperationFailed(detail) => {
+                write!(f, "The daemon returned a failure of the requested operation: {detail}")
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
