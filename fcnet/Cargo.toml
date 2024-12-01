@@ -6,7 +6,7 @@ description = "An in-process Firecracker microVM networking backend based on fcn
 license = "MIT"
 keywords = ["firecracker", "microvm", "networking"]
 categories = ["network-programming"]
-repository = "https://github.com/kanpov/fcnet"
+repository = "https://github.com/rust-firecracker/fcnet"
 readme = "README.md"
 
 [package.metadata.docs.rs]

@@ -6,7 +6,7 @@ description = "A daemon process that receives rootless connections from fcnetd-c
 license = "MIT"
 keywords = ["firecracker", "microvm", "networking"]
 categories = ["network-programming"]
-repository = "https://github.com/kanpov/fcnet"
+repository = "https://github.com/rust-firecracker/fcnet"
 readme = "README.md"
 
 [dependencies]
